@@ -88,7 +88,7 @@ public class IoCModule : Module
         builder.Register<PanelLogoLenovoLightingBacklightFeature>(true);
         builder.Register<PortsBacklightFeature>();
         builder.Register<PowerModeFeature>();
-        builder.Register<RefreshRateFeature>();
+        builder.Register<RefreshRateFeature>().SingleInstance();
         builder.Register<ResolutionFeature>();
         builder.Register<SpeakerFeature>();
         builder.Register<TouchpadLockWmiFeature>(true);

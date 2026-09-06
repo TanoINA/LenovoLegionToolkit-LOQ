@@ -234,6 +234,7 @@ public partial class App
             SafeInitAsync(InitPowerModeFeatureAsync, "Power Mode"),
             SafeInitAsync(InitITSModeFeatureAsync, "ITS Mode"),
             SafeInitAsync(InitBatteryFeatureAsync, "Battery Feature"),
+            SafeInitAsync(InitRefreshRateFeatureAsync, "Refresh Rate"),
             SafeInitAsync(InitRgbKeyboardControllerAsync, "RGB Keyboard"),
             SafeInitAsync(InitSpectrumKeyboardControllerAsync, "Spectrum Keyboard"),
             SafeInitAsync(InitGpuOverclockControllerAsync, "GPU Overclock"),
@@ -845,6 +846,24 @@ public partial class App
         catch (Exception ex)
         {
             Log.Instance.Trace($"Couldn't ensure correct battery mode.", ex);
+            return false;
+        }
+    }
+
+    private static async Task<bool> InitRefreshRateFeatureAsync()
+    {
+        try
+        {
+            var feature = IoCContainer.Resolve<RefreshRateFeature>();
+            if (await feature.IsSupportedAsync().ConfigureAwait(false))
+            {
+                await feature.EnsureCorrectRefreshRateIsSetAsync().ConfigureAwait(false);
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Couldn't ensure correct refresh rate.", ex);
             return false;
         }
     }

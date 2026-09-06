@@ -26,6 +26,7 @@ public class ApplicationSettings : AbstractSettings<ApplicationSettingsStore>
         public WindowSize? WindowSize { get; set; }
         public TemperatureUnit TemperatureUnit { get; set; }
         public List<RefreshRate> ExcludedRefreshRates { get; set; } = [];
+        public RefreshRate? TargetRefreshRate { get; set; }
         public WarrantyInfo? WarrantyInfo { get; set; }
         public bool SynchronizeBrightnessToAllPowerPlans { get; set; }
         public ModifierKey SmartFnLockFlags { get; set; }
