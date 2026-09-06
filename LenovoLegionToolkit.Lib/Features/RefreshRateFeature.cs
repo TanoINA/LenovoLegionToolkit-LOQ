@@ -5,13 +5,14 @@ using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Extensions;
 using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.Utils;
+using LenovoLegionToolkit.Lib.Settings;
 using WindowsDisplayAPI;
 using WindowsDisplayAPI.DisplayConfig;
 using WindowsDisplayAPI.Native.DeviceContext;
 
 namespace LenovoLegionToolkit.Lib.Features;
 
-public class RefreshRateFeature : IFeature<RefreshRate>
+public class RefreshRateFeature(ApplicationSettings settings) : IFeature<RefreshRate>
 {
     public Task<bool> IsSupportedAsync() => Task.FromResult(true);
 
@@ -151,11 +152,35 @@ public class RefreshRateFeature : IFeature<RefreshRate>
 
             await display.SetSettingsUsingPathInfoAsync(targetSetting, state.IsDynamic, physicalFrequency.GetValueOrDefault()).ConfigureAwait(false);
 
+            settings.Store.TargetRefreshRate = state;
+            settings.SynchronizeStore();
+
             Log.Instance.Trace($"Display set to {targetSetting.ToExtendedString()}");
         }
         else
         {
             Log.Instance.Trace($"Could not find matching settings for frequency {state}");
+        }
+    }
+
+    public async Task EnsureCorrectRefreshRateIsSetAsync()
+    {
+        var target = settings.Store.TargetRefreshRate;
+        if (target == null)
+            return;
+
+        try
+        {
+            var current = await GetStateAsync().ConfigureAwait(false);
+            if (current.Frequency != target.Value.Frequency || current.IsDynamic != target.Value.IsDynamic)
+            {
+                Log.Instance.Trace($"Current refresh rate ({current}) does not match target ({target.Value}). Re-applying target...");
+                await SetStateAsync(target.Value).ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to ensure correct refresh rate is set.", ex);
         }
     }
 

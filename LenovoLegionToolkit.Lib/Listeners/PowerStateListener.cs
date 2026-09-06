@@ -267,6 +267,23 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             MessagingCenter.Publish(new FanStateMessage(FanState.Manual));
         }
 
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                var refreshRateFeature = IoCContainer.Resolve<RefreshRateFeature>();
+                if (await refreshRateFeature.IsSupportedAsync().ConfigureAwait(false))
+                {
+                    await refreshRateFeature.EnsureCorrectRefreshRateIsSetAsync().ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed to ensure refresh rate after resume.", ex);
+            }
+        });
+
         _ = NotifyDgpuAsync();
     }
 
