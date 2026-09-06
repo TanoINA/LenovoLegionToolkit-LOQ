@@ -1,7 +1,7 @@
 ﻿using System.Threading.Tasks;
-using Windows.Win32;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
+using Windows.Win32;
 
 namespace LenovoLegionToolkit.Lib.System;
 
@@ -10,26 +10,38 @@ public static class Power
     public static async Task<PowerAdapterStatus> IsPowerAdapterConnectedAsync()
     {
         if (!PInvoke.GetSystemPowerStatus(out var sps))
+        {
             return PowerAdapterStatus.Connected;
+        }
 
         var adapterConnected = sps.ACLineStatus == 1;
-        var acFitForOc = await IsAcFitForOc().ConfigureAwait(false) ?? true;
-        var chargingNormally = await IsChargingNormally().ConfigureAwait(false) ?? true;
+        if (!adapterConnected)
+        {
+            return PowerAdapterStatus.Disconnected;
+        }
 
-        return (adapterConnected, acFitForOc && chargingNormally) switch
+        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
+        var useWindowsPowerStatus = mi.LegionSeries >= LegionSeries.Legion_Legacy && mi.LegionSeries != LegionSeries.LOQ;
+        var chargingNormally = useWindowsPowerStatus ? !(Battery.IsDischarging() ?? false) : await IsChargingNormallyLenovoAsync().ConfigureAwait(false) ?? true;
+
+        var status = (adapterConnected, chargingNormally) switch
         {
             (true, false) => PowerAdapterStatus.ConnectedLowWattage,
             (true, _) => PowerAdapterStatus.Connected,
-            (false, _) => PowerAdapterStatus.Disconnected,
+            _ => PowerAdapterStatus.Disconnected,
         };
+
+        return status;
     }
 
     public static bool IsBatterySaverEnabled()
     {
-        if (!PInvoke.GetSystemPowerStatus(out var sps))
+        if (!PInvoke.GetSystemPowerStatus(out var systemPowerStatus))
+        {
             return false;
+        }
 
-        return sps.SystemStatusFlag == 1;
+        return systemPowerStatus.SystemStatusFlag == 1;
     }
 
     public static async Task RestartAsync()
@@ -39,7 +51,14 @@ public static class Power
         await CMD.RunAsync("shutdown", "/r /t 0").ConfigureAwait(false);
     }
 
-    private static async Task<bool?> IsAcFitForOc()
+    private static async Task<bool?> IsChargingNormallyLenovoAsync()
+    {
+        var acFitForOc = await IsAcFitForOcAsync().ConfigureAwait(false) ?? true;
+        var chargingNormally = await IsChargingNormallyAsync().ConfigureAwait(false) ?? true;
+        return acFitForOc && chargingNormally;
+    }
+
+    private static async Task<bool?> IsAcFitForOcAsync()
     {
         try
         {
@@ -55,7 +74,7 @@ public static class Power
         }
     }
 
-    private static async Task<bool?> IsChargingNormally()
+    private static async Task<bool?> IsChargingNormallyAsync()
     {
         try
         {

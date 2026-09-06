@@ -91,6 +91,12 @@ public partial class CreateAutomationPipelineWindow
             _triggers.Remove(new HybridModeAutomationPipelineTrigger(HybridModeState.On));
         }
 
+        if (machineInformation.LegionSeries >= LegionSeries.Legion_Legacy
+            && machineInformation.LegionSeries != LegionSeries.LOQ)
+        {
+            _triggers.Remove(new LowWattageACAdapterConnectedAutomationPipelineTrigger());
+        }
+
         var triggerRegistry = IoCContainer.Resolve<IAutomationTriggerRegistry>();
         totalAvailableTriggers += triggerRegistry.Triggers.Count;
 

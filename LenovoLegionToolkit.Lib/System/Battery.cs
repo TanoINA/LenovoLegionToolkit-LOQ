@@ -2,11 +2,11 @@
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
-using Windows.Win32;
-using Windows.Win32.System.Power;
 using LenovoLegionToolkit.Lib.Extensions;
 using LenovoLegionToolkit.Lib.Settings;
 using LenovoLegionToolkit.Lib.Utils;
+using Windows.Win32;
+using Windows.Win32.System.Power;
 
 namespace LenovoLegionToolkit.Lib.System;
 
@@ -35,9 +35,14 @@ public static class Battery
         if (status.Value.Rate != 0)
         {
             if (Math.Abs(status.Value.Rate) < Math.Abs(MinDischargeRate))
+            {
                 MinDischargeRate = status.Value.Rate;
+            }
+
             if (Math.Abs(status.Value.Rate) > Math.Abs(MaxDischargeRate))
+            {
                 MaxDischargeRate = status.Value.Rate;
+            }
         }
     }
 
@@ -101,6 +106,27 @@ public static class Battery
         }
     }
 
+    public static bool? IsDischarging()
+    {
+        try
+        {
+            var batteryTag = GetBatteryTag();
+            var rate = GetBatteryStatus(batteryTag).Rate;
+            if (rate == unchecked((int)0x80000000))
+            {
+                return null;
+            }
+
+            Log.Instance.Trace($"Battery rate = {rate} mW");
+            return rate < 0;
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to get battery discharge status.", ex);
+            return null;
+        }
+    }
+
     public static DateTime? GetOnBatterySince()
     {
         try
@@ -121,22 +147,26 @@ public static class Battery
                 var isAcOnline = record.GetPropertyValues(propertySelector)[0] as bool?;
 
                 if (date is null || isAcOnline is null)
+                {
                     continue;
+                }
 
                 if (resetOnReboot && date < lastRebootTime)
+                {
                     continue;
+                }
 
                 logs.Add((date.Value, isAcOnline.Value));
             }
 
             if (logs.Count < 1)
+            {
                 return null;
+            }
 
             logs.Reverse();
 
-            var (dateTime, _) = logs
-                .TakeWhile(log => log.IsACOnline != true)
-                .LastOrDefault();
+            var (dateTime, _) = logs.TakeWhile(log => log.IsACOnline != true).LastOrDefault();
 
             return dateTime;
         }
@@ -150,23 +180,24 @@ public static class Battery
 
     private static SYSTEM_POWER_STATUS GetSystemPowerStatus()
     {
-        var result = PInvoke.GetSystemPowerStatus(out var sps);
+        var result = PInvoke.GetSystemPowerStatus(out var systemPowerStatus);
 
         if (!result)
+        {
             PInvokeExtensions.ThrowIfWin32Error("GetSystemPowerStatus");
+        }
 
-        return sps;
+        return systemPowerStatus;
     }
 
     private static uint GetBatteryTag()
     {
-        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(),
-            PInvoke.IOCTL_BATTERY_QUERY_TAG,
-            0u,
-            out uint tag);
+        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(), PInvoke.IOCTL_BATTERY_QUERY_TAG, 0u, out uint tag);
 
         if (!result)
+        {
             PInvokeExtensions.ThrowIfWin32Error("DeviceIoControl, IOCTL_BATTERY_QUERY_TAG");
+        }
 
         return tag;
     }
@@ -179,14 +210,14 @@ public static class Battery
             InformationLevel = BATTERY_QUERY_INFORMATION_LEVEL.BatteryInformation,
         };
 
-        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(),
-            PInvoke.IOCTL_BATTERY_QUERY_INFORMATION,
-            queryInformation,
-            out BATTERY_INFORMATION bi);
+        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(), PInvoke.IOCTL_BATTERY_QUERY_INFORMATION, queryInformation, out BATTERY_INFORMATION batterInformation);
 
         if (!result)
+        {
             PInvokeExtensions.ThrowIfWin32Error("DeviceIoControl, IOCTL_BATTERY_QUERY_INFORMATION");
-        return bi;
+        }
+
+        return batterInformation;
     }
 
     private static BATTERY_STATUS GetBatteryStatus(uint batteryTag)
@@ -195,13 +226,13 @@ public static class Battery
         {
             BatteryTag = batteryTag,
         };
-        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(),
-            PInvoke.IOCTL_BATTERY_QUERY_STATUS,
-            waitStatus,
-            out BATTERY_STATUS s);
+
+        var result = PInvokeExtensions.DeviceIoControl(Devices.GetBattery(), PInvoke.IOCTL_BATTERY_QUERY_STATUS, waitStatus, out BATTERY_STATUS s);
 
         if (!result)
+        {
             PInvokeExtensions.ThrowIfWin32Error("DeviceIoControl, IOCTL_BATTERY_QUERY_STATUS");
+        }
 
         return s;
     }
@@ -210,16 +241,11 @@ public static class Battery
     {
         for (uint index = 0; index < 3; index++)
         {
-            // if (Log.Instance.IsTraceEnabled)
-                // Log.Instance.Trace($"Checking battery data at index {index}...");
-
             var info = GetLenovoBatteryInformation(index);
             if (info.Temperature is ushort.MinValue or ushort.MaxValue)
+            {
                 continue;
-
-            // Noisy when debug.
-            // if (Log.Instance.IsTraceEnabled)
-                // Log.Instance.Trace($"Battery data found at index {index}.");
+            }
 
             return info;
         }
@@ -231,14 +257,13 @@ public static class Battery
 
     private static LENOVO_BATTERY_INFORMATION GetLenovoBatteryInformation(uint index)
     {
-        var result = PInvokeExtensions.DeviceIoControl(Drivers.GetEnergy(),
-            Drivers.IOCTL_ENERGY_BATTERY_INFORMATION,
-            index,
-            out LENOVO_BATTERY_INFORMATION bi);
+        var result = PInvokeExtensions.DeviceIoControl(Drivers.GetEnergy(), Drivers.IOCTL_ENERGY_BATTERY_INFORMATION, index, out LENOVO_BATTERY_INFORMATION batterInformation);
         if (!result)
+        {
             PInvokeExtensions.ThrowIfWin32Error("DeviceIoControl, 0x83102138");
+        }
 
-        return bi;
+        return batterInformation;
     }
 
     private static DateTime? DecodeDateTime(ushort s)
@@ -246,11 +271,16 @@ public static class Battery
         try
         {
             if (s < 1)
+            {
                 return null;
+            }
 
             var date = new DateTime((s >> 9) + 1980, (s >> 5) & 15, (s & 31), 0, 0, 0, DateTimeKind.Unspecified);
             if (date.Year is < 2018 or > 2030)
+            {
                 return null;
+            }
+
             return date;
         }
         catch
@@ -263,7 +293,10 @@ public static class Battery
     {
         var value = (s - 2731.6) / 10.0;
         if (value < 0)
+        {
             return null;
+        }
+
         return value;
     }
 }
