@@ -415,7 +415,6 @@ public class GodModeController(
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Apply failed. [setting=fanFullSpeed]", ex);
-                throw;
             }
         }
         else
@@ -428,7 +427,6 @@ public class GodModeController(
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Apply failed. [setting=fanFullSpeed]", ex);
-                throw;
             }
 
             try
@@ -448,7 +446,6 @@ public class GodModeController(
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Apply failed. [setting=fanTable]", ex);
-                throw;
             }
         }
     }

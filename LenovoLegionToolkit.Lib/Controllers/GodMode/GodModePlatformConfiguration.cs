@@ -36,7 +36,7 @@ public sealed record GodModePlatformConfiguration
             new() { CapabilityId = CapabilityID.GPUTemperatureLimit, PropertyName = nameof(GodModePreset.GPUTemperatureLimit), FailAllowed = true },
             new() { CapabilityId = CapabilityID.GPUTotalProcessingPowerTargetOnAcOffsetFromBaseline, PropertyName = nameof(GodModePreset.GPUTotalProcessingPowerTargetOnAcOffsetFromBaseline), FailAllowed = true },
             new() { CapabilityId = CapabilityID.GPUToCPUDynamicBoost, PropertyName = nameof(GodModePreset.GPUToCPUDynamicBoost), FailAllowed = true },
-            new() { CapabilityId = CapabilityID.FanFullSpeed, PropertyName = nameof(GodModePreset.FanFullSpeed) },
+            new() { CapabilityId = CapabilityID.FanFullSpeed, PropertyName = nameof(GodModePreset.FanFullSpeed), FailAllowed = true },
         ],
     };
 
