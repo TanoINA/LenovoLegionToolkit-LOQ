@@ -5,6 +5,15 @@ namespace LenovoLegionToolkit.Lib.Utils;
 
 public static class Folders
 {
+    public static void EnsureFolderExist(string filePath)
+    {
+        var folderPath = Path.GetDirectoryName(filePath);
+        if (!string.IsNullOrEmpty(folderPath))
+        {
+            Directory.CreateDirectory(folderPath);
+        }
+    }
+
     public static string Program => AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
 
     public static string AppData

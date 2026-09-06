@@ -37,6 +37,7 @@ public class Log
     public void ErrorReport(string header, Exception ex)
     {
         var errorReportPath = Path.Combine(_folderPath, $"error_{DateTime.UtcNow:yyyy_MM_dd_HH_mm_ss}.txt");
+        Folders.EnsureFolderExist(errorReportPath);
         File.AppendAllLines(errorReportPath, [header, Serialize(ex)]);
     }
 
@@ -63,6 +64,7 @@ public class Log
     {
         lock (_lock)
         {
+            Folders.EnsureFolderExist(path);
             var lines = new List<string>
             {
                 $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] [Thread Id: {Environment.CurrentManagedThreadId}] [{Path.GetFileName(file)}#{lineNumber}:{caller}] {message}"

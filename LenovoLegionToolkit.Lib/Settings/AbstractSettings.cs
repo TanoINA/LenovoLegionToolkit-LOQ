@@ -38,6 +38,7 @@ public abstract class AbstractSettings<T> where T : class, new()
     public void Save()
     {
         var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+        Folders.EnsureFolderExist(_settingsStorePath);
         File.WriteAllText(_settingsStorePath, settingsSerialized);
     }
 
@@ -78,6 +79,7 @@ public abstract class AbstractSettings<T> where T : class, new()
     public void SynchronizeStore()
     {
         var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+        Folders.EnsureFolderExist(_settingsStorePath);
         File.WriteAllText(_settingsStorePath, settingsSerialized);
     }
 
@@ -90,6 +92,7 @@ public abstract class AbstractSettings<T> where T : class, new()
 
             var backupFileName = $"{Path.GetFileNameWithoutExtension(_fileName)}_backup_{DateTime.UtcNow:yyyyMMddHHmmss}{Path.GetExtension(_fileName)}";
             var backupFilePath = Path.Combine(Folders.AppData, backupFileName);
+            Folders.EnsureFolderExist(backupFilePath);
             File.Copy(_settingsStorePath, backupFilePath);
         }
         catch (Exception ex)

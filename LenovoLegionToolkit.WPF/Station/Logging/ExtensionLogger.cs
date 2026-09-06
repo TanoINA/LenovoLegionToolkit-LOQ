@@ -41,6 +41,7 @@ public sealed class ExtensionLogger : IExtensionLogger
         {
             try
             {
+                Folders.EnsureFolderExist(_logPath);
                 File.AppendAllText(_logPath, $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] {message}\n");
             }
             catch
@@ -56,6 +57,7 @@ public sealed class ExtensionLogger : IExtensionLogger
         {
             try
             {
+                Folders.EnsureFolderExist(_logPath);
                 var formatted = $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] ERROR: {message}\n{exception}";
                 File.AppendAllText(_logPath, formatted + "\n");
             }
