@@ -13,6 +13,7 @@ https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit
 
 This build is based on upstream `dev` branch commits and adds specific adjustments for the LOQ 15IRX10 platform:
 
+- Advanced Optimus tray icon fix: Added an automatic dGPU pulse kick during AC startup/wake to resolve missing NVIDIA Dynamic Display Mode tray icon.
 - Refresh rate persistence: Fixed display refresh rate automatically reverting to 144Hz across reboots, sleep/wake cycles, and AC adapter connection/disconnection.
 - Custom Mode stability: Handled unsupported FanFullSpeed WMI capabilities and fan table write timeouts on LOQ motherboards, preventing presets from dropping back to Performance mode.
 - Power adapter state handling: Synchronized power profile enforcement and refresh rate verification when transitioning between AC and battery power.
