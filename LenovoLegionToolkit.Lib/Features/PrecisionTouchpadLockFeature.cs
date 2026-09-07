@@ -1,4 +1,4 @@
-﻿using LenovoLegionToolkit.Lib.System.Management;
+using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
 using Microsoft.Win32;
 using System;
@@ -28,23 +28,23 @@ public class PrecisionTouchpadLockFeature : IFeature<TouchpadLockState>
         return await WMI.LenovoUtilityData.GetFeatureSupportStateAsync(PrecisionTouchPad, Supported).ConfigureAwait(false);
     }
 
-    public async Task<TouchpadLockState> GetStateAsync()
+    public Task<TouchpadLockState> GetStateAsync()
     {
         using var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\PrecisionTouchPad\Status", false);
         
         object? value = key?.GetValue("Enabled");
         if (value is int enabled && enabled != 0)
         {
-            return TouchpadLockState.Off;
+            return Task.FromResult(TouchpadLockState.Off);
         }
 
-        return TouchpadLockState.On;
+        return Task.FromResult(TouchpadLockState.On);
     }
 
-    public async Task<TouchpadLockState[]> GetAllStatesAsync()
+    public Task<TouchpadLockState[]> GetAllStatesAsync()
     {
         var states = Enum.GetValues<TouchpadLockState>().Cast<TouchpadLockState>().ToArray();
-        return states;
+        return Task.FromResult(states);
     }
 
     public async Task SetStateAsync(TouchpadLockState state)

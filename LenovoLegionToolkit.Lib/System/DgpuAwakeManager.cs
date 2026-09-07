@@ -127,7 +127,11 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                     if (cts.IsCancellationRequested) return;
 
                     PInvoke.CreateDXGIFactory2(0, typeof(IDXGIFactory6).GUID, out object factoryObj);
-                    var factory = (IDXGIFactory6)factoryObj;
+                    if (factoryObj is not IDXGIFactory6 factory)
+                    {
+                        Log.Instance.Trace($"Failed to create IDXGIFactory6.");
+                        return;
+                    }
 
                     IDXGIAdapter1? dgpuAdapter = null;
                     try
@@ -249,7 +253,11 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
     private unsafe void CreateD3D11Device()
     {
         PInvoke.CreateDXGIFactory2(0, typeof(IDXGIFactory6).GUID, out object factoryObj);
-        var factory = (IDXGIFactory6)factoryObj;
+        if (factoryObj is not IDXGIFactory6 factory)
+        {
+            Log.Instance.Trace($"Failed to create IDXGIFactory6.");
+            throw new Exception("Failed to create IDXGIFactory6.");
+        }
 
         IDXGIAdapter1? dgpuAdapter = null;
         try

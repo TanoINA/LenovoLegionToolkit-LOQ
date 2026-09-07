@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
@@ -29,15 +29,9 @@ public class SensorsControllerV0(GPUController gpuController) : AbstractSensorsC
         }
     }
 
-    protected override async Task<int> GetCpuCurrentTemperatureAsync()
-    {
-        return -1;
-    }
+    protected override Task<int> GetCpuCurrentTemperatureAsync() => Task.FromResult(-1);
 
-    protected override async Task<int> GetGpuCurrentTemperatureAsync()
-    {
-        return -1;
-    }
+    protected override Task<int> GetGpuCurrentTemperatureAsync() => Task.FromResult(-1);
 
     protected override Task<int> GetCpuCurrentFanSpeedAsync() => WMI.LenovoOtherMethod.GetFeatureValueAsync(CapabilityID.CpuCurrentFanSpeed);
 

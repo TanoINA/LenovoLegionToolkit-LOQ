@@ -849,7 +849,7 @@ public partial class App
         }
     }
 
-    private static async Task<bool> InitAutomationLocalization()
+    private static Task<bool> InitAutomationLocalization()
     {
         AutomationTranslator.GetTitleFunc = typeName =>
         {
@@ -859,7 +859,7 @@ public partial class App
             });
         };
 
-        return true;
+        return Task.FromResult(true);
     }
 
     private static void InitSetLogIndicator()

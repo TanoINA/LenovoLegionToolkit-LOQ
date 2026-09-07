@@ -28,7 +28,7 @@ public class ITSModeListener(
             return;
         }
 
-        MessagingCenter.Subscribe<DriverKeyPressedMessage>(this, OnFnQKeyPressedAsync);
+        MessagingCenter.Subscribe<DriverKeyPressedMessage>(this, OnFnQKeyPressed);
         Log.Instance.Trace($"ITSModeListener started, listening for driver keys.");
     }
 
@@ -38,7 +38,7 @@ public class ITSModeListener(
         return Task.CompletedTask;
     }
 
-    private async void OnFnQKeyPressedAsync(DriverKeyPressedMessage message)
+    private void OnFnQKeyPressed(DriverKeyPressedMessage message)
     {
         if (message.Key != DriverKey.FnQ)
         {
