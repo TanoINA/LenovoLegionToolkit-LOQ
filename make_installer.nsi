@@ -97,6 +97,9 @@ Section "!Lenovo Legion Toolkit (Core)" SecMain
 
   DetailPrint "Cleaning legacy installations if present..."
   RMDir /r "$LOCALAPPDATA\Programs\${PRODUCT_NAME_COMPACT}"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\{0C37B9AC-9C3D-4302-8ABB-125C7C7D83D5}_is1"
+  Delete "$INSTDIR\unins000.exe"
+  Delete "$INSTDIR\unins000.dat"
 
   SetOutPath "$INSTDIR"
   DetailPrint "Extracting files..."
@@ -184,6 +187,9 @@ Section "Uninstall"
   DetailPrint "Cleaning registry..."
   DeleteRegKey HKLM "${PRODUCT_UNINST_KEY}"
   DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
+  DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\{0C37B9AC-9C3D-4302-8ABB-125C7C7D83D5}_is1"
+  Delete "$INSTDIR\unins000.exe"
+  Delete "$INSTDIR\unins000.dat"
 
   ; Ask user if they wish to keep or delete settings
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to delete all Lenovo Legion Toolkit settings, customizations, and configurations?" IDNO skip_settings

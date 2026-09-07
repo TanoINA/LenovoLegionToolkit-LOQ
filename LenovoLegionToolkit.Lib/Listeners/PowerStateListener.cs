@@ -184,10 +184,10 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                     await HandleResumeInternalAsync(powerAdapterState).ConfigureAwait(false);
                     break;
 
-                case PowerStateEvent.StatusChange when powerAdapterState == PowerAdapterStatus.Connected:
+                case PowerStateEvent.StatusChange:
                     if (powerAdapterStateChanged)
                     {
-                        await HandleConnectedStatusChangeAsync().ConfigureAwait(false);
+                        await HandlePowerAdapterStatusChangeAsync().ConfigureAwait(false);
                     }
 
                     break;
@@ -287,7 +287,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         _ = NotifyDgpuAsync();
     }
 
-    private async Task HandleConnectedStatusChangeAsync()
+    private async Task HandlePowerAdapterStatusChangeAsync()
     {
         await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
 
@@ -295,6 +295,23 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         {
             await _powerModeFeature.EnsureGodModeStateIsAppliedAsync().ConfigureAwait(false);
         }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                var refreshRateFeature = IoCContainer.Resolve<RefreshRateFeature>();
+                if (await refreshRateFeature.IsSupportedAsync().ConfigureAwait(false))
+                {
+                    await refreshRateFeature.EnsureCorrectRefreshRateIsSetAsync().ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed to ensure refresh rate after power adapter change.", ex);
+            }
+        });
 
         _ = NotifyDgpuAsync();
     }
