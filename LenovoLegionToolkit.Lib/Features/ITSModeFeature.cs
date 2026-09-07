@@ -378,14 +378,14 @@ public partial class ITSModeFeature : IFeature<ITSMode>
         return mode.GetDisplayName();
     }
 
-    public async Task<ITSMode> GetITSModeEx()
+    public Task<ITSMode> GetITSModeEx()
     {
         try
         {
             if (!IsEnergyDriverPresentEx())
             {
                 Log.Instance.Trace($"EnergyDrv not found, returning None.");
-                return ITSMode.None;
+                return Task.FromResult(ITSMode.None);
             }
 
             var dispatcherVersion = GetDispatcherVersionEx();
@@ -410,7 +410,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
                     Log.Instance.Trace($"ITS mode check: {(useVersioned ? VAL_ITS_CUR_SET_V : VAL_ITS_CUR_SET)}={currentSetting}");
 
-                    return currentSetting switch
+                    var mode = currentSetting switch
                     {
                         0 => ITSMode.ItsAuto,
                         1 => ITSMode.MmcCool,
@@ -418,6 +418,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
                         4 => ITSMode.MmcGeek,
                         _ => ITSMode.None
                     };
+                    return Task.FromResult(mode);
                 }
             }
             else
@@ -432,15 +433,15 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
                     if (autoSetting == 2 && currentSetting == 0)
                     {
-                        return ITSMode.ItsAuto;
+                        return Task.FromResult(ITSMode.ItsAuto);
                     }
                     else if (autoSetting == 1 && currentSetting == 1)
                     {
-                        return ITSMode.MmcCool;
+                        return Task.FromResult(ITSMode.MmcCool);
                     }
                     else if (autoSetting == 1 && currentSetting == 3)
                     {
-                        return _legacyGeekModeActive ? ITSMode.MmcGeek : ITSMode.MmcPerformance;
+                        return Task.FromResult(_legacyGeekModeActive ? ITSMode.MmcGeek : ITSMode.MmcPerformance);
                     }
                 }
             }
@@ -450,7 +451,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
             Log.Instance.Trace($"GetITSModeEx failed", ex);
         }
 
-        return ITSMode.None;
+        return Task.FromResult(ITSMode.None);
     }
 
     private Task SetITSModeExAsync(ITSMode mode)

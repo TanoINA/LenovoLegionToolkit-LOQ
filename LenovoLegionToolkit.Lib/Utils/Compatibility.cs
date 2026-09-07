@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Controllers.GodMode;
 using LenovoLegionToolkit.Lib.Controllers.Sensors;
@@ -28,7 +29,7 @@ public static partial class Compatibility
     [GeneratedRegex("^[A-Z0-9]{4}")]
     private static partial Regex BiosPrefixRegex();
 
-    [GeneratedRegex("[0-9]{2}")]
+    [GeneratedRegex("[0-9]{2,}")]
     private static partial Regex BiosVersionRegex();
 
     [GeneratedRegex(@"([AI][A-Z]{2}(?:\d+|\b)|\bR\d{4})", RegexOptions.RightToLeft)]
@@ -146,6 +147,7 @@ public static partial class Compatibility
         ("Motobook", LegionSeries.Motorola)
     ];
 
+    private static readonly SemaphoreSlim _machineInfoLock = new(1, 1);
     private static MachineInformation? _machineInformation;
     private static FakeMachineInformation? _fakeMachineInformation;
 
@@ -193,51 +195,61 @@ public static partial class Compatibility
     {
         if (_machineInformation != null) return _machineInformation.Value;
 
-        var (vendor, machineType, model, serialNumber) = await GetModelDataAsync().ConfigureAwait(false);
-        var generation = GetMachineGeneration(model);
-        var legionSeries = GetLegionSeries(model, machineType);
-        var (biosVersion, biosVersionRaw) = GetBIOSVersion();
-        var supportedPowerModes = (await GetSupportedPowerModesAsync().ConfigureAwait(false)).ToArray();
-        var smartFanVersion = await GetSmartFanVersionAsync().ConfigureAwait(false);
-        var legionZoneVersion = await GetLegionZoneVersionAsync().ConfigureAwait(false);
-        var features = await GetFeaturesAsync().ConfigureAwait(false);
-
-        var machineInformation = new MachineInformation
+        await _machineInfoLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            Generation = generation,
-            LegionSeries = legionSeries,
-            Vendor = vendor,
-            MachineType = machineType,
-            Model = model,
-            SerialNumber = serialNumber,
-            BiosVersion = biosVersion,
-            BiosVersionRaw = biosVersionRaw,
-            SupportedPowerModes = supportedPowerModes,
-            SmartFanVersion = smartFanVersion,
-            LegionZoneVersion = legionZoneVersion,
-            Features = features,
-            Properties = new()
-            {
-                SupportsAlwaysOnAc = GetAlwaysOnAcStatus(),
-                SupportsExtremeMode = GetSupportsExtremeMode(supportedPowerModes, smartFanVersion, legionZoneVersion),
-                GodModePlatform = GetGodModePlatform(supportedPowerModes, smartFanVersion, legionZoneVersion, generation, model, machineType, biosVersion),
-                SupportsGSync = await GetSupportsGSyncAsync().ConfigureAwait(false),
-                SupportsIGPUMode = await GetSupportsIGPUModeAsync().ConfigureAwait(false),
-                SupportsAIMode = await GetSupportsAIModeAsync().ConfigureAwait(false),
-                SupportsBootLogoChange = GetSupportBootLogoChange(),
-                SupportsITSMode = GetSupportITSMode(model),
-                HasQuietToPerformanceModeSwitchingBug = GetHasQuietToPerformanceModeSwitchingBug(biosVersion),
-                HasGodModeToOtherModeSwitchingBug = GetHasGodModeToOtherModeSwitchingBug(biosVersion),
-                IsExcludedFromLenovoLighting = GetIsExcludedFromLenovoLighting(biosVersion, generation, legionSeries),
-                IsExcludedFromPanelLogoLenovoLighting = GetIsExcludedFromPanelLenovoLighting(machineType, model),
-                HasAlternativeFullSpectrumLayout = GetHasAlternativeFullSpectrumLayout(machineType),
-                IsAmdDevice = GetIsAmdDevice(model),
-                IsChineseModel = GetIsChineseModel(model),
-            }
-        };
+            if (_machineInformation != null) return _machineInformation.Value;
 
-        _machineInformation = machineInformation;
-        return _machineInformation.Value;
+            var (vendor, machineType, model, serialNumber) = await GetModelDataAsync().ConfigureAwait(false);
+            var generation = GetMachineGeneration(model);
+            var legionSeries = GetLegionSeries(model, machineType);
+            var (biosVersion, biosVersionRaw) = GetBIOSVersion();
+            var supportedPowerModes = (await GetSupportedPowerModesAsync().ConfigureAwait(false)).ToArray();
+            var smartFanVersion = await GetSmartFanVersionAsync().ConfigureAwait(false);
+            var legionZoneVersion = await GetLegionZoneVersionAsync().ConfigureAwait(false);
+            var features = await GetFeaturesAsync().ConfigureAwait(false);
+
+            var machineInformation = new MachineInformation
+            {
+                Generation = generation,
+                LegionSeries = legionSeries,
+                Vendor = vendor,
+                MachineType = machineType,
+                Model = model,
+                SerialNumber = serialNumber,
+                BiosVersion = biosVersion,
+                BiosVersionRaw = biosVersionRaw,
+                SupportedPowerModes = supportedPowerModes,
+                SmartFanVersion = smartFanVersion,
+                LegionZoneVersion = legionZoneVersion,
+                Features = features,
+                Properties = new()
+                {
+                    SupportsAlwaysOnAc = GetAlwaysOnAcStatus(),
+                    SupportsExtremeMode = GetSupportsExtremeMode(supportedPowerModes, smartFanVersion, legionZoneVersion),
+                    GodModePlatform = GetGodModePlatform(supportedPowerModes, smartFanVersion, legionZoneVersion, generation, model, machineType, biosVersion),
+                    SupportsGSync = await GetSupportsGSyncAsync().ConfigureAwait(false),
+                    SupportsIGPUMode = await GetSupportsIGPUModeAsync().ConfigureAwait(false),
+                    SupportsAIMode = await GetSupportsAIModeAsync().ConfigureAwait(false),
+                    SupportsBootLogoChange = GetSupportBootLogoChange(),
+                    SupportsITSMode = GetSupportITSMode(model),
+                    HasQuietToPerformanceModeSwitchingBug = GetHasQuietToPerformanceModeSwitchingBug(biosVersion),
+                    HasGodModeToOtherModeSwitchingBug = GetHasGodModeToOtherModeSwitchingBug(biosVersion),
+                    IsExcludedFromLenovoLighting = GetIsExcludedFromLenovoLighting(biosVersion, generation, legionSeries),
+                    IsExcludedFromPanelLogoLenovoLighting = GetIsExcludedFromPanelLenovoLighting(machineType, model),
+                    HasAlternativeFullSpectrumLayout = GetHasAlternativeFullSpectrumLayout(machineType),
+                    IsAmdDevice = GetIsAmdDevice(model),
+                    IsChineseModel = GetIsChineseModel(model),
+                }
+            };
+
+            _machineInformation = machineInformation;
+            return _machineInformation.Value;
+        }
+        finally
+        {
+            _machineInfoLock.Release();
+        }
     }
 
 
@@ -710,10 +722,11 @@ public static partial class Compatibility
         };
     }
 
-    public static bool GetIsOverdriverSupported()
+    public static bool GetIsOverdriverSupported(MachineInformation? mi = null)
     {
-        var gen = _machineInformation?.Generation;
-        var series = _machineInformation?.LegionSeries;
+        var target = mi ?? _machineInformation;
+        var gen = target?.Generation;
+        var series = target?.LegionSeries;
 
         return (series is not (LegionSeries.Legion_7 or LegionSeries.Legion_Pro_7)) || !(gen >= 10);
     }

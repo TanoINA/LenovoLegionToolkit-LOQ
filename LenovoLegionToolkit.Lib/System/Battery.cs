@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
@@ -143,20 +143,23 @@ public static class Battery
 
             while (logReader.ReadEvent() is EventLogRecord record)
             {
-                var date = record.TimeCreated;
-                var isAcOnline = record.GetPropertyValues(propertySelector)[0] as bool?;
-
-                if (date is null || isAcOnline is null)
+                using (record)
                 {
-                    continue;
-                }
+                    var date = record.TimeCreated;
+                    var isAcOnline = record.GetPropertyValues(propertySelector)[0] as bool?;
 
-                if (resetOnReboot && date < lastRebootTime)
-                {
-                    continue;
-                }
+                    if (date is null || isAcOnline is null)
+                    {
+                        continue;
+                    }
 
-                logs.Add((date.Value, isAcOnline.Value));
+                    if (resetOnReboot && date < lastRebootTime)
+                    {
+                        continue;
+                    }
+
+                    logs.Add((date.Value, isAcOnline.Value));
+                }
             }
 
             if (logs.Count < 1)
