@@ -171,12 +171,20 @@ public class RefreshRateFeature(ApplicationSettings settings) : IFeature<Refresh
 
         try
         {
-            var current = await GetStateAsync().ConfigureAwait(false);
-            if (current.Frequency != target.Value.Frequency || current.IsDynamic != target.Value.IsDynamic)
+            InternalDisplay.SetNeedsRefresh();
+            await RetryHelper.RetryAsync(async () =>
             {
-                Log.Instance.Trace($"Current refresh rate ({current}) does not match target ({target.Value}). Re-applying target...");
-                await SetStateAsync(target.Value).ConfigureAwait(false);
-            }
+                var current = await GetStateAsync().ConfigureAwait(false);
+                if (current.Frequency != target.Value.Frequency || current.IsDynamic != target.Value.IsDynamic)
+                {
+                    Log.Instance.Trace($"Current refresh rate ({current}) does not match target ({target.Value}). Re-applying target...");
+                    await SetStateAsync(target.Value).ConfigureAwait(false);
+                }
+            },
+            maximumRetries: 3,
+            timeout: TimeSpan.FromSeconds(1),
+            matchingException: ex => ex is WindowsDisplayAPI.Exceptions.ModeChangeException or global::System.ComponentModel.Win32Exception or InvalidOperationException,
+            tag: nameof(EnsureCorrectRefreshRateIsSetAsync));
         }
         catch (Exception ex)
         {
