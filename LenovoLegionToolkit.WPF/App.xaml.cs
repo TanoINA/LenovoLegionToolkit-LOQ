@@ -796,18 +796,17 @@ public partial class App
                     var hybridState = await hybridFeature.GetStateAsync().ConfigureAwait(false);
                     if (hybridState is not (HybridModeState.OnIGPUOnly or HybridModeState.UMA))
                     {
-                        Log.Instance.Trace($"AC connected on startup in {hybridState}. Pulsing dGPU to initialize display mux...");
-                        var dgpuNotify = IoCContainer.Resolve<DGPUNotify>();
-                        if (await dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
-                        {
-                            await dgpuNotify.NotifyAsync(true).ConfigureAwait(false);
-                        }
-
                         _ = Task.Run(async () =>
                         {
                             try
                             {
                                 await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                                var dgpuNotify = IoCContainer.Resolve<DGPUNotify>();
+                                if (await dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
+                                {
+                                    await dgpuNotify.NotifyAsync(true).ConfigureAwait(false);
+                                }
+
                                 await dgpuAwakeManager.PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                             }
                             catch (Exception ex)

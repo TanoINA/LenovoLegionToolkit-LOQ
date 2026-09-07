@@ -94,23 +94,72 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         if (_isDisposed) return;
         if (_isActive) return;
 
-        try
+        await Task.Run(async () =>
         {
             Log.Instance.Trace($"Pulsing dGPU awake for {duration.TotalSeconds}s...");
-            await StartInternalAsync().ConfigureAwait(false);
-            await Task.Delay(duration).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"Failed during dGPU pulse awake.", ex);
-        }
-        finally
-        {
-            if (!_settings.Store.KeepDgpuAwake)
+            ID3D11Device? device = null;
+            ID3D11DeviceContext? context = null;
+            try
             {
-                await StopInternalAsync().ConfigureAwait(false);
+                PInvoke.CreateDXGIFactory2(0, typeof(IDXGIFactory6).GUID, out object factoryObj);
+                var factory = (IDXGIFactory6)factoryObj;
+
+                IDXGIAdapter1? dgpuAdapter = null;
+                try
+                {
+                    factory.EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE.DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, typeof(IDXGIAdapter1).GUID, out object adapterObj);
+                    dgpuAdapter = (IDXGIAdapter1)adapterObj;
+                }
+                catch { }
+
+                if (dgpuAdapter == null)
+                {
+                    Marshal.ReleaseComObject(factory);
+                    return;
+                }
+
+                try
+                {
+                    unsafe
+                    {
+                        PInvoke.D3D11CreateDevice(
+                            dgpuAdapter,
+                            Windows.Win32.Graphics.Direct3D.D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_UNKNOWN,
+                            Windows.Win32.Foundation.HMODULE.Null,
+                            Windows.Win32.Graphics.Direct3D11.D3D11_CREATE_DEVICE_FLAG.D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                            null,
+                            0,
+                            7u,
+                            out device,
+                            null,
+                            out context);
+                    }
+                }
+                finally
+                {
+                    Marshal.ReleaseComObject(dgpuAdapter);
+                    Marshal.ReleaseComObject(factory);
+                }
+
+                await Task.Delay(duration).ConfigureAwait(false);
             }
-        }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed during dGPU pulse awake.", ex);
+            }
+            finally
+            {
+                if (context != null)
+                {
+                    Marshal.ReleaseComObject(context);
+                }
+                if (device != null)
+                {
+                    Marshal.ReleaseComObject(device);
+                }
+                Log.Instance.Trace($"dGPU pulse awake completed.");
+            }
+        }).ConfigureAwait(false);
     }
 
     private async Task StartInternalAsync()

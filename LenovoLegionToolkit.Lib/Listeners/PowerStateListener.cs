@@ -8,6 +8,7 @@ using Windows.Win32.System.Power;
 using Windows.Win32.UI.WindowsAndMessaging;
 using LenovoLegionToolkit.Lib.Controllers;
 using LenovoLegionToolkit.Lib.Features;
+using LenovoLegionToolkit.Lib.Features.Hybrid;
 using LenovoLegionToolkit.Lib.Features.Hybrid.Notify;
 using System.Linq;
 using LenovoLegionToolkit.Lib.Messaging;
@@ -350,6 +351,20 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             {
                 await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                 await _dgpuNotify.NotifyAsync().ConfigureAwait(false);
+
+                var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
+                if (acStatus == PowerAdapterStatus.Connected)
+                {
+                    var hybridFeature = IoCContainer.Resolve<HybridModeFeature>();
+                    if (await hybridFeature.IsSupportedAsync().ConfigureAwait(false))
+                    {
+                        var hybridState = await hybridFeature.GetStateAsync().ConfigureAwait(false);
+                        if (hybridState is not (HybridModeState.OnIGPUOnly or HybridModeState.UMA))
+                        {
+                            await IoCContainer.Resolve<DgpuAwakeManager>().PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                        }
+                    }
+                }
             }
         }
         catch (Exception ex)
