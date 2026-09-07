@@ -13,8 +13,11 @@ Console.WriteLine(@"============================================================
 Console.WriteLine(@"Probe - Lenovo Gaming Hardware Information Gatherer");
 Console.WriteLine(@"============================================================================");
 Console.WriteLine(@"This tool scans your system for known Lenovo gaming features (Legion, LOQ, IdeaPad).");
-Console.WriteLine(@"Press any key to start scanning...");
-Console.ReadKey();
+if (!Console.IsInputRedirected)
+{
+    Console.WriteLine(@"Press any key to start scanning...");
+    Console.ReadKey();
+}
 Console.WriteLine();
 
 string GetFullException(Exception ex)
@@ -692,5 +695,8 @@ Console.WriteLine(@"Scan Complete!");
 Console.WriteLine(@"============================================================================");
 Console.WriteLine(@"Green = Supported/Available, Yellow = Not Registered/Info, Red = Error/Not Available");
 Console.WriteLine();
-Console.WriteLine(@"Press any key to exit...");
-Console.ReadKey();
+if (!Console.IsInputRedirected)
+{
+    Console.WriteLine(@"Press any key to exit...");
+    Console.ReadKey();
+}
