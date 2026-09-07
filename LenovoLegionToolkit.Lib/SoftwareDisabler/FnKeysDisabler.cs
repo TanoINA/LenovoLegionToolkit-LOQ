@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -32,14 +32,20 @@ public class FnKeysDisabler : AbstractSoftwareDisabler
 
         try
         {
-            foreach (var process in Process.GetProcessesByName("utility"))
+            var procs = Process.GetProcessesByName("utility");
+            foreach (var process in procs)
             {
-                var description = process.MainModule?.FileVersionInfo.FileDescription;
-                if (description is null)
-                    continue;
-
-                if (description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
-                    result.Add(process.ProcessName);
+                try
+                {
+                    var description = process.MainModule?.FileVersionInfo.FileDescription;
+                    if (description != null && description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
+                        result.Add(process.ProcessName);
+                }
+                catch { /* Ignore access denied or missing module */ }
+                finally
+                {
+                    process.Dispose();
+                }
             }
         }
         catch {  /* Ignore */ }

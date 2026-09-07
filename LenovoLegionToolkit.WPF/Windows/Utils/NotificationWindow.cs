@@ -55,6 +55,12 @@ public class NotificationWindow : UiWindow, INotificationWindow
         VerticalContentAlignment = VerticalAlignment.Center,
     };
 
+    public bool IsOpen { get; private set; }
+    public ScreenInfo ScreenInfo => _screenInfo;
+
+    private Action? _clickAction;
+    private System.Threading.CancellationTokenSource? _closeCts;
+
     public NotificationWindow(SymbolRegular symbol, SymbolRegular? overlaySymbol, Action<SymbolIcon>? symbolTransform, string text, Brush? textColor, Action? clickAction, ScreenInfo screenInfo, NotificationPosition position)
     {
         InitializeStyle();
@@ -63,14 +69,14 @@ public class NotificationWindow : UiWindow, INotificationWindow
         ShowInTaskbar = false;
         SourceInitialized += OnSourceInitialized;
 
-
         _screenInfo = screenInfo;
+        _clickAction = clickAction;
 
         SourceInitialized += (_, _) => InitializePosition(screenInfo.WorkArea, screenInfo.DpiX, screenInfo.DpiY, position);
         MouseDown += (_, _) =>
         {
             Close();
-            clickAction?.Invoke();
+            _clickAction?.Invoke();
         };
     }
     private void OnSourceInitialized(object? sender, EventArgs e)
@@ -87,18 +93,76 @@ public class NotificationWindow : UiWindow, INotificationWindow
 
     public void Show(int closeAfter)
     {
+        IsOpen = true;
         Show();
-        Task.Delay(closeAfter).ContinueWith(_ =>
+        ResetCloseTimer(closeAfter);
+    }
+
+    public void Update(SymbolRegular symbol, SymbolRegular? overlaySymbol, Action<SymbolIcon>? symbolTransform, string text, Brush? textColor, Action? clickAction, NotificationPosition position, int closeAfter)
+    {
+        if (!IsOpen)
+            return;
+
+        _clickAction = clickAction;
+        _symbolIcon.Symbol = symbol;
+        _textBlock.Content = text;
+        _textBlock.Foreground = textColor ?? (SolidColorBrush)FindResource("TextFillColorPrimaryBrush");
+
+        if (overlaySymbol.HasValue)
         {
-            Close();
+            _overlaySymbolIcon.Symbol = overlaySymbol.Value;
+            if (!_mainGrid.Children.Contains(_overlaySymbolIcon))
+            {
+                Grid.SetColumn(_overlaySymbolIcon, 0);
+                _mainGrid.Children.Add(_overlaySymbolIcon);
+            }
+        }
+        else
+        {
+            _mainGrid.Children.Remove(_overlaySymbolIcon);
+        }
+
+        _symbolIcon.ClearValue(Control.ForegroundProperty);
+        _symbolIcon.SetResourceReference(Control.ForegroundProperty, "TextFillColorPrimaryBrush");
+        symbolTransform?.Invoke(_symbolIcon);
+
+        InitializePosition(_screenInfo.WorkArea, _screenInfo.DpiX, _screenInfo.DpiY, position);
+        ResetCloseTimer(closeAfter);
+    }
+
+    private void ResetCloseTimer(int closeAfter)
+    {
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = new System.Threading.CancellationTokenSource();
+        var token = _closeCts.Token;
+
+        Task.Delay(closeAfter, token).ContinueWith(t =>
+        {
+            if (!t.IsCanceled && IsOpen)
+            {
+                Close();
+            }
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
-
     public void Close(bool immediate)
     {
+        IsOpen = false;
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = null;
         WindowStyle = WindowStyle.None;
         Close();
+    }
+
+    protected override void OnClosed(EventArgs e)
+    {
+        base.OnClosed(e);
+        IsOpen = false;
+        _closeCts?.Cancel();
+        _closeCts?.Dispose();
+        _closeCts = null;
     }
 
     private void InitializeStyle()
@@ -181,8 +245,10 @@ public class NotificationWindow : UiWindow, INotificationWindow
         }
 
         var windowInteropHandler = new WindowInteropHelper(this);
-
-        PInvoke.SetWindowPos((HWND)windowInteropHandler.Handle, HWND.Null, (int)nativeLeft, (int)nativeTop, 0, 0, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOSIZE);
+        if (windowInteropHandler.Handle != IntPtr.Zero)
+        {
+            PInvoke.SetWindowPos((HWND)windowInteropHandler.Handle, HWND.Null, (int)nativeLeft, (int)nativeTop, (int)nativeWidth, (int)nativeHeight, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+        }
     }
 
     private void InitializeContent(SymbolRegular symbol, SymbolRegular? overlaySymbol, Action<SymbolIcon>? symbolTransform, string text, Brush? textColor)

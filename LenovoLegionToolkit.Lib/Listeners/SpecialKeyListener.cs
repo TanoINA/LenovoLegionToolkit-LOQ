@@ -251,10 +251,7 @@ public class SpecialKeyListener(
 
             await feature.SetStateAsync(next).ConfigureAwait(false);
 
-            _ = Task.Delay(TimeSpan.FromSeconds(1)).ContinueWith(_ =>
-            {
-                MessagingCenter.Publish(new NotificationMessage(NotificationType.RefreshRate, next.DisplayName));
-            });
+            MessagingCenter.Publish(new NotificationMessage(NotificationType.RefreshRate, next.DisplayName));
 
             Log.Instance.Trace($"Switched refresh rate after Fn+R to {next}.");
         }

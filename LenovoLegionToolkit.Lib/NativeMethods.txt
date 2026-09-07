@@ -180,6 +180,7 @@ DisplayConfigGetDeviceInfo
 DisplayConfigSetDeviceInfo
 
 MonitorFromPoint
+MonitorFromWindow
 GetMonitorInfoW
 GetDpiForMonitor
 
