@@ -31,6 +31,8 @@ public abstract class AbstractSoftwareDisabler
     private static readonly long CacheDurationTicks = Stopwatch.Frequency * 5;
     private readonly global::System.Threading.SemaphoreSlim _statusLock = new(1, 1);
 
+    public void InvalidateCache() => _cache = null;
+
     public async Task<SoftwareStatus> GetStatusAsync(bool forceRefresh = false)
     {
         var currentCache = _cache;
