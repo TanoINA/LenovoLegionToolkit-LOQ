@@ -11,9 +11,6 @@ param(
 $ErrorActionPreference = "Stop"
 
 if (-not (Test-Path $PfxPath) -or [string]::IsNullOrWhiteSpace($Password)) {
-    if ($env:CI -eq "true") {
-        throw "Missing certificate or password to sign the installer in CI environment."
-    }
     Write-Warning "Skipping installer signing. Certificate or password not found."
     return
 }

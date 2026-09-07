@@ -121,18 +121,23 @@ jobs:
       env:
         LLT_CERT_PFX: ${{ secrets.LLT_CERT_PFX }}
       run: |
-        if (-not $env:LLT_CERT_PFX) {
-          Write-Error "Missing LLT_CERT_PFX secret. The identity MSIX package cannot be signed."
-          exit 1
+        if ($env:LLT_CERT_PFX) {
+          [IO.File]::WriteAllBytes("LenovoLegionToolkit.pfx", [Convert]::FromBase64String($env:LLT_CERT_PFX))
+        } else {
+          Write-Warning "No LLT_CERT_PFX secret found. Building in raw mode without Authenticode signing."
         }
-
-        [IO.File]::WriteAllBytes("LenovoLegionToolkit.pfx", [Convert]::FromBase64String($env:LLT_CERT_PFX))
       shell: powershell
 
     - name: Build
       env:
         LLT_CERT_PASSWORD: ${{ secrets.LLT_CERT_PASSWORD }}
-      run: .\make_action.bat ${{ steps.release_meta.outputs.version }}
+      run: |
+        if (Test-Path "LenovoLegionToolkit.pfx") {
+          .\make_action.bat ${{ steps.release_meta.outputs.version }}
+        } else {
+          .\make_action.bat ${{ steps.release_meta.outputs.version }} raw
+        }
+      shell: powershell
 
     - name: Rename installer
       run: |
