@@ -193,6 +193,11 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
         Log.Instance.Trace($"Setting ITS mode to: {state}");
 
+        if (showNotification)
+        {
+            ITSModeListener.PublishNotification(state);
+        }
+
         try
         {
             await SetITSModeExAsync(state).ConfigureAwait(false);
@@ -217,11 +222,6 @@ public partial class ITSModeFeature : IFeature<ITSMode>
             else
             {
                 await ApplyPowerChanges().ConfigureAwait(false);
-            }
-
-            if (showNotification)
-            {
-                ITSModeListener.PublishNotification(state);
             }
 
             SaveCurrentStateToSettings(state);

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Diagnostics;
@@ -26,45 +26,71 @@ public abstract class AbstractSoftwareDisabler
 
     public event EventHandler<AbstractSoftwareDisablerEventArgs>? OnRefreshed;
 
-    public Task<SoftwareStatus> GetStatusAsync() => Task.Run(() =>
-    {
-        bool isEnabled;
-        bool isInstalled;
+    private SoftwareStatus? _cachedStatus;
+    private long _lastCheckTimestamp;
+    private static readonly long CacheDurationTicks = Stopwatch.Frequency * 5;
+    private readonly global::System.Threading.SemaphoreSlim _statusLock = new(1, 1);
 
+    public async Task<SoftwareStatus> GetStatusAsync(bool forceRefresh = false)
+    {
+        if (!forceRefresh && _cachedStatus.HasValue && (Stopwatch.GetTimestamp() - _lastCheckTimestamp) < CacheDurationTicks)
+            return _cachedStatus.Value;
+
+        await _statusLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            var services = RunningServices().ToArray();
-            var processes = RunningProcesses().ToArray();
+            if (!forceRefresh && _cachedStatus.HasValue && (Stopwatch.GetTimestamp() - _lastCheckTimestamp) < CacheDurationTicks)
+                return _cachedStatus.Value;
 
-            Log.Instance.Trace($"Running services count: {services.Length}. [type={GetType().Name}, services={string.Join(",", services)}]");
-            Log.Instance.Trace($"Running processes count: {processes.Length}. [type={GetType().Name}, processes={string.Join(",", processes)}]");
+            var status = await Task.Run(() =>
+            {
+                bool isEnabled;
+                bool isInstalled;
 
-            isEnabled = services.Length != 0 || processes.Length != 0;
-            isInstalled = IsInstalled();
+                try
+                {
+                    var services = RunningServices().ToArray();
+                    var processes = RunningProcesses().ToArray();
+
+                    Log.Instance.Trace($"Running services count: {services.Length}. [type={GetType().Name}, services={string.Join(",", services)}]");
+                    Log.Instance.Trace($"Running processes count: {processes.Length}. [type={GetType().Name}, processes={string.Join(",", processes)}]");
+
+                    isEnabled = services.Length != 0 || processes.Length != 0;
+                    isInstalled = IsInstalled();
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"Exception while getting status. [type={GetType().Name}]", ex);
+
+                    isEnabled = false;
+                    isInstalled = false;
+                }
+
+                Log.Instance.Trace($"Status: {isEnabled},{isInstalled} [type={GetType().Name}]");
+
+                SoftwareStatus s;
+                if (isEnabled)
+                    s = SoftwareStatus.Enabled;
+                else if (!isInstalled)
+                    s = SoftwareStatus.NotFound;
+                else
+                    s = SoftwareStatus.Disabled;
+
+                return s;
+            }).ConfigureAwait(false);
+
+            _cachedStatus = status;
+            _lastCheckTimestamp = Stopwatch.GetTimestamp();
+
+            OnRefreshed?.Invoke(this, new() { Status = status });
+
+            return status;
         }
-        catch (Exception ex)
+        finally
         {
-            Log.Instance.Trace($"Exception while getting status. [type={GetType().Name}]", ex);
-
-            isEnabled = false;
-            isInstalled = false;
+            _statusLock.Release();
         }
-
-        Log.Instance.Trace($"Status: {isEnabled},{isInstalled} [type={GetType().Name}]");
-
-        SoftwareStatus status;
-
-        if (isEnabled)
-            status = SoftwareStatus.Enabled;
-        else if (!isInstalled)
-            status = SoftwareStatus.NotFound;
-        else
-            status = SoftwareStatus.Disabled;
-
-        OnRefreshed?.Invoke(this, new() { Status = status });
-
-        return status;
-    });
+    }
 
     public virtual Task EnableAsync() => Task.Run(async () =>
     {
@@ -73,7 +99,7 @@ public abstract class AbstractSoftwareDisabler
         SetScheduledTasksEnabled(true);
         SetServicesEnabled(true);
 
-        _ = await GetStatusAsync().ConfigureAwait(false);
+        _ = await GetStatusAsync(true).ConfigureAwait(false);
 
         Log.Instance.Trace($"Enabled [type={GetType().Name}]");
     });
@@ -86,7 +112,7 @@ public abstract class AbstractSoftwareDisabler
         SetServicesEnabled(false);
         await KillProcessesAsync().ConfigureAwait(false);
 
-        _ = await GetStatusAsync().ConfigureAwait(false);
+        _ = await GetStatusAsync(true).ConfigureAwait(false);
 
         Log.Instance.Trace($"Disabled [type={GetType().Name}]");
     });
@@ -101,22 +127,24 @@ public abstract class AbstractSoftwareDisabler
 
     protected virtual IEnumerable<string> RunningProcesses()
     {
-        foreach (var process in Process.GetProcesses())
+        foreach (var processName in ProcessNames)
         {
-            foreach (var processName in ProcessNames)
+            Process[] procs;
+            try
             {
-                var name = string.Empty;
+                procs = Process.GetProcessesByName(processName);
+            }
+            catch
+            {
+                continue;
+            }
 
-                try
-                {
-                    name = process.ProcessName;
-                    if (!name.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
-                        continue;
-                }
-                catch {  /* Ignore */ }
+            if (procs.Length > 0)
+            {
+                foreach (var p in procs)
+                    p.Dispose();
 
-                if (!string.IsNullOrEmpty(name))
-                    yield return name;
+                yield return processName;
             }
         }
     }

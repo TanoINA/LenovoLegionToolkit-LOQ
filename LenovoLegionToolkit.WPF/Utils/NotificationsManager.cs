@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -35,7 +36,7 @@ public class NotificationsManager
 
     private void OnNotificationReceived(NotificationMessage notification)
     {
-        Dispatcher.Invoke(() =>
+        void HandleNotification()
         {
             Log.Instance.Trace($"Notification {notification} received");
 
@@ -218,7 +219,12 @@ public class NotificationsManager
             ShowNotification(duration, symbol, overlaySymbol, symbolTransform, text, textColor, clickAction, effectivePosition);
 
             Log.Instance.Trace($"Notification {notification} shown.");
-        });
+        }
+
+        if (Dispatcher.CheckAccess())
+            HandleNotification();
+        else
+            Dispatcher.InvokeAsync(HandleNotification, DispatcherPriority.Normal);
     }
 
     private void ShowNotification(int duration, SymbolRegular symbol, SymbolRegular? overlaySymbol, Action<SymbolIcon>? symbolTransform, string text, Brush? textColor, Action? clickAction, NotificationPosition position)
@@ -226,29 +232,47 @@ public class NotificationsManager
         if (App.Current.MainWindow is not MainWindow mainWindow)
             return;
 
-        if (_windows.Count != 0)
+        if (ScreenHelper.Screens.Count == 0)
         {
-            foreach (var window in _windows)
-                window?.Close(true);
-
-            _windows.Clear();
+            ScreenHelper.UpdateScreenInfos();
         }
 
-        ScreenHelper.UpdateScreenInfos();
+        var targetScreens = _settings.Store.NotificationOnAllScreens
+            ? ScreenHelper.Screens
+            : (ScreenHelper.PrimaryScreen.HasValue ? [ScreenHelper.PrimaryScreen.Value] : ScreenHelper.Screens);
 
-        if (_settings.Store.NotificationOnAllScreens)
+        if (targetScreens.Count == 0)
         {
-            foreach (var screen in ScreenHelper.Screens)
+            ScreenHelper.UpdateScreenInfos();
+            targetScreens = _settings.Store.NotificationOnAllScreens
+                ? ScreenHelper.Screens
+                : (ScreenHelper.PrimaryScreen.HasValue ? [ScreenHelper.PrimaryScreen.Value] : ScreenHelper.Screens);
+        }
+
+        for (var i = _windows.Count - 1; i >= 0; i--)
+        {
+            var w = _windows[i];
+            if (w == null || !w.IsOpen)
             {
-                ShowOnScreen(screen, duration, symbol, overlaySymbol, symbolTransform, text, textColor, clickAction, position);
+                _windows.RemoveAt(i);
+            }
+            else if (!targetScreens.Any(s => s.WorkArea == w.ScreenInfo.WorkArea))
+            {
+                w.Close(true);
+                _windows.RemoveAt(i);
             }
         }
-        else
+
+        foreach (var screen in targetScreens)
         {
-            var primaryScreen = ScreenHelper.PrimaryScreen;
-            if (primaryScreen.HasValue)
+            var existing = _windows.FirstOrDefault(w => w != null && w.IsOpen && w.ScreenInfo.WorkArea == screen.WorkArea);
+            if (existing != null)
             {
-                ShowOnScreen(primaryScreen.Value, duration, symbol, overlaySymbol, symbolTransform, text, textColor, clickAction, position);
+                existing.Update(symbol, overlaySymbol, symbolTransform, text, textColor, clickAction, position, duration);
+            }
+            else
+            {
+                ShowOnScreen(screen, duration, symbol, overlaySymbol, symbolTransform, text, textColor, clickAction, position);
             }
         }
     }
