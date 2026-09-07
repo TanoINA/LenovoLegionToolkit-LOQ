@@ -173,7 +173,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             var powerAdapterState = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
             Log.Instance.Trace($"Handle {powerStateEvent}. [newState={powerAdapterState}]");
 
-            var powerAdapterStateChanged = powerAdapterState != _lastPowerAdapterState;
+            var powerAdapterStateChanged = _lastPowerAdapterState.HasValue && powerAdapterState != _lastPowerAdapterState.Value;
 
             switch (powerStateEvent)
             {
@@ -382,7 +382,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
 
     private void HandlePowerStateChangeNotification(PowerStateEvent powerStateEvent, PowerAdapterStatus newAdapterState)
     {
-        var powerAdapterStateChanged = newAdapterState != _lastPowerAdapterState;
+        var powerAdapterStateChanged = _lastPowerAdapterState.HasValue && newAdapterState != _lastPowerAdapterState.Value;
         _lastPowerAdapterState = newAdapterState;
 
         if (powerAdapterStateChanged)
