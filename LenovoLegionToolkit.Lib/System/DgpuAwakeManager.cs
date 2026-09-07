@@ -89,6 +89,30 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         }
     }
 
+    public async Task PulseDgpuAsync(TimeSpan duration)
+    {
+        if (_isDisposed) return;
+        if (_isActive) return;
+
+        try
+        {
+            Log.Instance.Trace($"Pulsing dGPU awake for {duration.TotalSeconds}s...");
+            await StartInternalAsync().ConfigureAwait(false);
+            await Task.Delay(duration).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed during dGPU pulse awake.", ex);
+        }
+        finally
+        {
+            if (!_settings.Store.KeepDgpuAwake)
+            {
+                await StopInternalAsync().ConfigureAwait(false);
+            }
+        }
+    }
+
     private async Task StartInternalAsync()
     {
         await _lock.WaitAsync().ConfigureAwait(false);

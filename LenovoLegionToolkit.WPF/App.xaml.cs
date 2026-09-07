@@ -240,6 +240,7 @@ public partial class App
             SafeInitAsync(InitGpuOverclockControllerAsync, "GPU Overclock"),
             SafeInitAsync(InitSensorsGroupControllerFeatureAsync, "Sensors Group"),
             SafeInitAsync(InitHybridModeAsync, "Hybrid Mode"),
+            SafeInitAsync(InitDgpuStartupWakeupAsync, "dGPU Startup Wakeup"),
             SafeInitAsync(InitAutomationProcessorAsync, "Automation Processor"),
             SafeInitAsync(InitLampArrayControllerAsync, "LampArray"),
             SafeInitAsync(InitAMDOverclocking, "AMD Overclocking"),
@@ -777,6 +778,51 @@ public partial class App
         catch (Exception ex)
         {
             Log.Instance.Trace($"Couldn't initialize hybrid mode.", ex);
+            return false;
+        }
+    }
+
+    private static async Task<bool> InitDgpuStartupWakeupAsync()
+    {
+        try
+        {
+            var dgpuAwakeManager = IoCContainer.Resolve<DgpuAwakeManager>();
+            var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
+            if (acStatus == PowerAdapterStatus.Connected)
+            {
+                var hybridFeature = IoCContainer.Resolve<HybridModeFeature>();
+                if (await hybridFeature.IsSupportedAsync().ConfigureAwait(false))
+                {
+                    var hybridState = await hybridFeature.GetStateAsync().ConfigureAwait(false);
+                    if (hybridState is not (HybridModeState.OnIGPUOnly or HybridModeState.UMA))
+                    {
+                        Log.Instance.Trace($"AC connected on startup in {hybridState}. Pulsing dGPU to initialize display mux...");
+                        var dgpuNotify = IoCContainer.Resolve<DGPUNotify>();
+                        if (await dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
+                        {
+                            await dgpuNotify.NotifyAsync(true).ConfigureAwait(false);
+                        }
+
+                        _ = Task.Run(async () =>
+                        {
+                            try
+                            {
+                                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                                await dgpuAwakeManager.PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
+                            }
+                            catch (Exception ex)
+                            {
+                                Log.Instance.Trace($"Failed to pulse dGPU on startup.", ex);
+                            }
+                        });
+                    }
+                }
+            }
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed in InitDgpuStartupWakeupAsync.", ex);
             return false;
         }
     }
