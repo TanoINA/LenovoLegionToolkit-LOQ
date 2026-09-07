@@ -26,21 +26,23 @@ public abstract class AbstractSoftwareDisabler
 
     public event EventHandler<AbstractSoftwareDisablerEventArgs>? OnRefreshed;
 
-    private SoftwareStatus? _cachedStatus;
-    private long _lastCheckTimestamp;
+    private record StatusCache(SoftwareStatus Status, long Timestamp);
+    private volatile StatusCache? _cache;
     private static readonly long CacheDurationTicks = Stopwatch.Frequency * 5;
     private readonly global::System.Threading.SemaphoreSlim _statusLock = new(1, 1);
 
     public async Task<SoftwareStatus> GetStatusAsync(bool forceRefresh = false)
     {
-        if (!forceRefresh && _cachedStatus.HasValue && (Stopwatch.GetTimestamp() - _lastCheckTimestamp) < CacheDurationTicks)
-            return _cachedStatus.Value;
+        var currentCache = _cache;
+        if (!forceRefresh && currentCache != null && (Stopwatch.GetTimestamp() - currentCache.Timestamp) < CacheDurationTicks)
+            return currentCache.Status;
 
         await _statusLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (!forceRefresh && _cachedStatus.HasValue && (Stopwatch.GetTimestamp() - _lastCheckTimestamp) < CacheDurationTicks)
-                return _cachedStatus.Value;
+            currentCache = _cache;
+            if (!forceRefresh && currentCache != null && (Stopwatch.GetTimestamp() - currentCache.Timestamp) < CacheDurationTicks)
+                return currentCache.Status;
 
             var status = await Task.Run(() =>
             {
@@ -79,8 +81,7 @@ public abstract class AbstractSoftwareDisabler
                 return s;
             }).ConfigureAwait(false);
 
-            _cachedStatus = status;
-            _lastCheckTimestamp = Stopwatch.GetTimestamp();
+            _cache = new StatusCache(status, Stopwatch.GetTimestamp());
 
             OnRefreshed?.Invoke(this, new() { Status = status });
 
@@ -117,12 +118,36 @@ public abstract class AbstractSoftwareDisabler
         Log.Instance.Trace($"Disabled [type={GetType().Name}]");
     });
 
-    private bool IsInstalled() => ServiceController.GetServices().Any(s => ServiceNames.Contains(s.ServiceName));
+    private bool IsInstalled()
+    {
+        var services = ServiceController.GetServices();
+        try
+        {
+            return services.Any(s => ServiceNames.Contains(s.ServiceName));
+        }
+        finally
+        {
+            foreach (var s in services) s.Dispose();
+        }
+    }
 
     private IEnumerable<string> RunningServices()
     {
         var services = ServiceController.GetServices();
-        return ServiceNames.Where(s => IsServiceEnabled(s, services));
+        try
+        {
+            var result = new List<string>();
+            foreach (var s in ServiceNames)
+            {
+                if (IsServiceEnabled(s, services))
+                    result.Add(s);
+            }
+            return result;
+        }
+        finally
+        {
+            foreach (var s in services) s.Dispose();
+        }
     }
 
     protected virtual IEnumerable<string> RunningProcesses()

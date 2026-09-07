@@ -100,7 +100,7 @@ public class NotificationWindow : UiWindow, INotificationWindow
 
     public void Update(SymbolRegular symbol, SymbolRegular? overlaySymbol, Action<SymbolIcon>? symbolTransform, string text, Brush? textColor, Action? clickAction, NotificationPosition position, int closeAfter)
     {
-        if (!IsOpen)
+        if (!IsOpen || !IsLoaded)
             return;
 
         _clickAction = clickAction;
@@ -133,7 +133,6 @@ public class NotificationWindow : UiWindow, INotificationWindow
     private void ResetCloseTimer(int closeAfter)
     {
         _closeCts?.Cancel();
-        _closeCts?.Dispose();
         _closeCts = new System.Threading.CancellationTokenSource();
         var token = _closeCts.Token;
 
@@ -146,14 +145,29 @@ public class NotificationWindow : UiWindow, INotificationWindow
         }, TaskScheduler.FromCurrentSynchronizationContext());
     }
 
+    public new void Close()
+    {
+        IsOpen = false;
+        _closeCts?.Cancel();
+        _closeCts = null;
+        base.Close();
+    }
+
     public void Close(bool immediate)
     {
         IsOpen = false;
         _closeCts?.Cancel();
-        _closeCts?.Dispose();
         _closeCts = null;
         WindowStyle = WindowStyle.None;
-        Close();
+        base.Close();
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        IsOpen = false;
+        _closeCts?.Cancel();
+        _closeCts = null;
+        base.OnClosing(e);
     }
 
     protected override void OnClosed(EventArgs e)
@@ -161,7 +175,6 @@ public class NotificationWindow : UiWindow, INotificationWindow
         base.OnClosed(e);
         IsOpen = false;
         _closeCts?.Cancel();
-        _closeCts?.Dispose();
         _closeCts = null;
     }
 
@@ -247,7 +260,7 @@ public class NotificationWindow : UiWindow, INotificationWindow
         var windowInteropHandler = new WindowInteropHelper(this);
         if (windowInteropHandler.Handle != IntPtr.Zero)
         {
-            PInvoke.SetWindowPos((HWND)windowInteropHandler.Handle, HWND.Null, (int)nativeLeft, (int)nativeTop, (int)nativeWidth, (int)nativeHeight, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE);
+            PInvoke.SetWindowPos((HWND)windowInteropHandler.Handle, HWND.Null, (int)nativeLeft, (int)nativeTop, (int)nativeWidth, (int)nativeHeight, SET_WINDOW_POS_FLAGS.SWP_NOACTIVATE | SET_WINDOW_POS_FLAGS.SWP_NOZORDER);
         }
     }
 

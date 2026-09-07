@@ -57,8 +57,8 @@ public static class FullscreenHelper
                 {
                     try
                     {
-                        char* buffer = stackalloc char[260];
-                        uint size = 260;
+                        char* buffer = stackalloc char[1024];
+                        uint size = 1024;
                         if (PInvoke.QueryFullProcessImageName(hProcess, PROCESS_NAME_FORMAT.PROCESS_NAME_NATIVE, buffer, &size))
                         {
                             var imageName = new string(buffer, 0, (int)size);
