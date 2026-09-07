@@ -351,25 +351,32 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             {
                 await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
                 await _dgpuNotify.NotifyAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Error in _dgpuNotify: {ex}");
+        }
 
-                var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
-                if (acStatus == PowerAdapterStatus.Connected)
+        try
+        {
+            var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
+            if (acStatus == PowerAdapterStatus.Connected)
+            {
+                var hybridFeature = IoCContainer.Resolve<HybridModeFeature>();
+                if (await hybridFeature.IsSupportedAsync().ConfigureAwait(false))
                 {
-                    var hybridFeature = IoCContainer.Resolve<HybridModeFeature>();
-                    if (await hybridFeature.IsSupportedAsync().ConfigureAwait(false))
+                    var hybridState = await hybridFeature.GetStateAsync().ConfigureAwait(false);
+                    if (hybridState is not (HybridModeState.OnIGPUOnly or HybridModeState.UMA))
                     {
-                        var hybridState = await hybridFeature.GetStateAsync().ConfigureAwait(false);
-                        if (hybridState is not (HybridModeState.OnIGPUOnly or HybridModeState.UMA))
-                        {
-                            await IoCContainer.Resolve<DgpuAwakeManager>().PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
-                        }
+                        await IoCContainer.Resolve<DgpuAwakeManager>().PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
                     }
                 }
             }
         }
         catch (Exception ex)
         {
-            Log.Instance.Trace($"Error in NotifyDgpuAsync: {ex}");
+            Log.Instance.Trace($"Error in PulseDgpuAsync: {ex}");
         }
     }
 

@@ -801,10 +801,17 @@ public partial class App
                             try
                             {
                                 await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
-                                var dgpuNotify = IoCContainer.Resolve<DGPUNotify>();
-                                if (await dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
+                                try
                                 {
-                                    await dgpuNotify.NotifyAsync(true).ConfigureAwait(false);
+                                    var dgpuNotify = IoCContainer.Resolve<DGPUNotify>();
+                                    if (await dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
+                                    {
+                                        await dgpuNotify.NotifyAsync(true).ConfigureAwait(false);
+                                    }
+                                }
+                                catch (Exception ex)
+                                {
+                                    Log.Instance.Trace($"Failed DGPUNotify on startup.", ex);
                                 }
 
                                 await dgpuAwakeManager.PulseDgpuAsync(TimeSpan.FromSeconds(3)).ConfigureAwait(false);
