@@ -255,23 +255,27 @@ public static partial class Compatibility
 
     private static Task<(string, string, string, string)> GetModelDataAsync() => WMI.Win32.ComputerSystemProduct.ReadAsync();
 
-    private static (BiosVersion?, string?) GetBIOSVersion()
+    public static (BiosVersion? Version, string? Raw) ParseBiosVersionString(string rawVersion)
     {
-        var registryValue = Registry.GetValue("HKEY_LOCAL_MACHINE", "HARDWARE\\DESCRIPTION\\System\\BIOS", "BIOSVersion", string.Empty);
-        var result = registryValue?.ToString()?.Trim() ?? string.Empty;
-
         var prefixRegex = BiosPrefixRegex();
         var versionRegex = BiosVersionRegex();
 
-        var prefix = prefixRegex.Match(result).Value;
-        var versionString = versionRegex.Match(result).Value;
+        var prefix = prefixRegex.Match(rawVersion).Value;
+        var versionString = versionRegex.Match(rawVersion).Value;
 
         if (!int.TryParse(versionString, out var version))
         {
             return (null, null);
         }
 
-        return (new BiosVersion(prefix, version), result);
+        return (new BiosVersion(prefix, version), rawVersion);
+    }
+
+    private static (BiosVersion?, string?) GetBIOSVersion()
+    {
+        var registryValue = Registry.GetValue("HKEY_LOCAL_MACHINE", "HARDWARE\\DESCRIPTION\\System\\BIOS", "BIOSVersion", string.Empty);
+        var result = registryValue?.ToString()?.Trim() ?? string.Empty;
+        return ParseBiosVersionString(result);
     }
 
     private static bool GetIsChineseModel(string model)
