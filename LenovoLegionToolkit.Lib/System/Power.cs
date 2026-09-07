@@ -1,4 +1,4 @@
-﻿using System.Threading.Tasks;
+using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
 using Windows.Win32;
@@ -21,7 +21,7 @@ public static class Power
         }
 
         var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
-        var useWindowsPowerStatus = mi.LegionSeries >= LegionSeries.Legion_Legacy && mi.LegionSeries != LegionSeries.LOQ;
+        var useWindowsPowerStatus = mi.LegionSeries >= LegionSeries.Legion_Legacy;
         var chargingNormally = useWindowsPowerStatus ? !(Battery.IsDischarging() ?? false) : await IsChargingNormallyLenovoAsync().ConfigureAwait(false) ?? true;
 
         var status = (adapterConnected, chargingNormally) switch
