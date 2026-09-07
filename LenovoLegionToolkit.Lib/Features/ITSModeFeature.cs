@@ -60,6 +60,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
     private volatile bool _legacyGeekModeActive;
     private volatile bool _pendingOverlaySync;
     private CancellationTokenSource? _overlayTimeoutCts;
+    private readonly global::System.Threading.SemaphoreSlim _itsLock = new(1, 1);
 
     public ITSMode LastItsMode { get; set; } = ITSMode.None;
 
@@ -275,6 +276,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
     public async Task<ITSMode> ToggleItsMode()
     {
+        await _itsLock.WaitAsync().ConfigureAwait(false);
         try
         {
             var currentState = await GetStateAsync().ConfigureAwait(false);
@@ -332,6 +334,10 @@ public partial class ITSModeFeature : IFeature<ITSMode>
         {
             Log.Instance.Trace($"Failed to toggle ITS mode", ex);
             return ITSMode.None;
+        }
+        finally
+        {
+            _itsLock.Release();
         }
     }
 

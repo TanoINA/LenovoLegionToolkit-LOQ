@@ -31,6 +31,8 @@ public class NotificationsManager
     {
         _settings = settings;
 
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => ScreenHelper.UpdateScreenInfos();
+
         MessagingCenter.Subscribe<NotificationMessage>(this, OnNotificationReceived);
     }
 
@@ -38,7 +40,9 @@ public class NotificationsManager
     {
         void HandleNotification()
         {
-            Log.Instance.Trace($"Notification {notification} received");
+            try
+            {
+                Log.Instance.Trace($"Notification {notification} received");
 
             if (_settings.Store.DontShowNotifications)
             {
@@ -220,6 +224,11 @@ public class NotificationsManager
 
             Log.Instance.Trace($"Notification {notification} shown.");
         }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to handle notification {notification}.", ex);
+        }
+    }
 
         if (Dispatcher.CheckAccess())
             HandleNotification();
@@ -285,6 +294,7 @@ public class NotificationsManager
             nw.SourceInitialized += (_, _) => nw.EscalateZBand();
         }
 
+        nw.Closed += (_, _) => _windows.Remove(nw);
         nw.Show(duration);
         _windows.Add(nw);
     }
