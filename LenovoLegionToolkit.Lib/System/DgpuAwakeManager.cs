@@ -60,35 +60,51 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
     private async void PowerStateListener_Changed(object? sender, PowerStateListener.ChangedEventArgs e)
     {
-        if (e.PowerStateEvent == PowerStateEvent.Suspend)
+        // async void event handler: any unhandled exception propagates to the
+        // SynchronizationContext and can crash the process. Wrap defensively.
+        try
         {
-            Log.Instance.Trace($"System suspending: tearing down dGPU awake manager.");
-            CancelPulse();
-            await StopInternalAsync().ConfigureAwait(false);
-        }
-        else if (e.PowerStateEvent == PowerStateEvent.Resume)
-        {
-            Log.Instance.Trace($"System resumed: restoring dGPU awake manager.");
-            await UpdateStateAsync().ConfigureAwait(false);
-        }
-        else if (e.PowerAdapterStateChanged)
-        {
-            // Debounce transient ACLineStatus spikes (e.g. 255) that fire rapid AC change events.
-            var now = DateTime.UtcNow;
-            if (now - _lastAdapterChangeHandled < AdapterChangeDebounce)
-            {
-                Log.Instance.Trace($"Power adapter state change debounced (transient spike suppressed).");
+            if (_isDisposed)
                 return;
-            }
-            _lastAdapterChangeHandled = now;
 
-            Log.Instance.Trace($"Power adapter state changed: updating dGPU awake manager.");
-            var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
-            if (acStatus != PowerAdapterStatus.Connected)
+            if (e.PowerStateEvent == PowerStateEvent.Suspend)
             {
+                Log.Instance.Trace($"System suspending: tearing down dGPU awake manager.");
                 CancelPulse();
+                await StopInternalAsync().ConfigureAwait(false);
             }
-            await UpdateStateAsync().ConfigureAwait(false);
+            else if (e.PowerStateEvent == PowerStateEvent.Resume)
+            {
+                Log.Instance.Trace($"System resumed: restoring dGPU awake manager.");
+                await UpdateStateAsync().ConfigureAwait(false);
+            }
+            else if (e.PowerAdapterStateChanged)
+            {
+                // Debounce transient ACLineStatus spikes (e.g. 255) that fire rapid AC change events.
+                var now = DateTime.UtcNow;
+                if (now - _lastAdapterChangeHandled < AdapterChangeDebounce)
+                {
+                    Log.Instance.Trace($"Power adapter state change debounced (transient spike suppressed).");
+                    return;
+                }
+                _lastAdapterChangeHandled = now;
+
+                Log.Instance.Trace($"Power adapter state changed: updating dGPU awake manager.");
+                var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
+                if (acStatus != PowerAdapterStatus.Connected)
+                {
+                    CancelPulse();
+                }
+                await UpdateStateAsync().ConfigureAwait(false);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Most likely an ObjectDisposedException if the manager is being torn down
+            // concurrently (race between this handler and DisposeAsync/Dispose). Log and
+            // swallow: the suspend/resume/AC event is transient and will be re-evaluated
+            // on the next state change or on the next UpdateStateAsync call.
+            Log.Instance.Trace($"dGPU awake manager power-state handler failed.", ex);
         }
     }
 
@@ -230,6 +246,10 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Re-check after acquiring the lock: UpdateStateAsync's initial _isDisposed
+            // check is subject to a TOCTOU race with DisposeAsync/Dispose, which could
+            // dispose the lock (and dGPU state) between the check and this point.
+            if (_isDisposed) return;
             if (_isActive) return;
 
             Log.Instance.Trace($"Attempting to keep dGPU awake...");
@@ -259,6 +279,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
+            // Re-check after acquiring the lock: same TOCTOU window as StartInternalAsync.
+            if (_isDisposed) return;
             if (!_isActive) return;
 
             DisposeD3D11Device();

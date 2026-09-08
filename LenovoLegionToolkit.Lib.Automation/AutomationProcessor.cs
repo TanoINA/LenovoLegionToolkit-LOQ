@@ -35,6 +35,7 @@ public class AutomationProcessor(
     private List<AutomationPipeline> _pipelines = [];
     private CancellationTokenSource? _cts;
     private int _eventProcessingActive;
+    private IAutomationEvent? _pendingEvent;
 
     public bool IsEnabled => settings.Store.IsEnabled;
 
@@ -333,31 +334,45 @@ public class AutomationProcessor(
     private async Task ProcessEvent(IAutomationEvent e)
     {
         // Coalesce event bursts: only one event-processing cycle runs at a time.
-        // Events arriving while a cycle is active are superseded by the latest one
-        // and handled by the trailing pass, preventing unbounded task queue growth.
-        if (Interlocked.Exchange(ref _eventProcessingActive, 1) != 0)
+        // The latest event is captured via a simple swap under the processing guard:
+        // if a cycle is already running, the caller records its event as pending and
+        // returns; the running cycle picks up the most recent pending event in a
+        // trailing pass. This bounds the number of concurrent processing tasks to 1
+        // while still guaranteeing that the most recent state-changing event is acted
+        // upon (e.g. a PowerMode=Performance event arriving mid-cycle is not dropped).
+        _pendingEvent = e;
+        if (Interlocked.CompareExchange(ref _eventProcessingActive, 1, 0) != 0)
         {
             return;
         }
 
         try
         {
-            var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
-                    .Select(async t => await t.IsMatchingEvent(e).ConfigureAwait(false)))
-                .ConfigureAwait(false);
-
-            if (!triggerMatches.Any(t => t))
+            // Drain pending events in a loop so that bursts collapse into a single
+            // serialized sequence of runs, each acting on the freshest event seen.
+            IAutomationEvent? current;
+            while ((current = Interlocked.Exchange(ref _pendingEvent, null)) is not null)
             {
-                return;
+                try
+                {
+                    var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
+                            .Select(async t => await t.IsMatchingEvent(current).ConfigureAwait(false)))
+                        .ConfigureAwait(false);
+
+                    if (!triggerMatches.Any(t => t))
+                    {
+                        continue;
+                    }
+
+                    Log.Instance.Trace($"Processing event {current}... [type={current.GetType().Name}]");
+
+                    await RunAsync(current).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"Failed to process event {current?.GetType().Name}.", ex);
+                }
             }
-
-            Log.Instance.Trace($"Processing event {e}... [type={e.GetType().Name}]");
-
-            await RunAsync(e).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"Failed to process event {e.GetType().Name}.", ex);
         }
         finally
         {
