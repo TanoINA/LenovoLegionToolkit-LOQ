@@ -221,8 +221,10 @@ public class GPUController
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            Log.Instance.Trace($"Exception occurred", ex);
-            throw;
+            // Do not rethrow: this loop runs as a fire-and-forget task. Rethrowing
+            // faults the task and kills GPU monitoring until app restart. Log and exit
+            // the loop gracefully instead.
+            Log.Instance.Trace($"GPU refresh loop terminated unexpectedly.", ex);
         }
     }
 
