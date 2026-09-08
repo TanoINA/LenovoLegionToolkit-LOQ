@@ -4,11 +4,15 @@
 ; -------------------------------------------------------------------------
 
 !ifndef VERSION
-  !define VERSION "2.34.1"
+  !define VERSION "2.35.4.6"
+!endif
+
+!ifndef NUMERIC_VERSION
+  !define NUMERIC_VERSION "2.35.4.6"
 !endif
 
 !ifndef BUILD_DATE
-  !define BUILD_DATE "20260907"
+  !define BUILD_DATE "20260908"
 !endif
 
 !define PRODUCT_NAME "Lenovo Legion Toolkit"
@@ -33,12 +37,12 @@ InstallDir "$PROGRAMFILES64\${PRODUCT_NAME_COMPACT}"
 InstallDirRegKey HKLM "${PRODUCT_DIR_REGKEY}" ""
 
 ; Version information
-VIProductVersion "${VERSION}"
+VIProductVersion "${NUMERIC_VERSION}"
 VIAddVersionKey "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey "CompanyName" "${PRODUCT_PUBLISHER}"
 VIAddVersionKey "LegalCopyright" "© 2026 Bartosz Cichecki, Kaguya, and Dr. Skinner"
 VIAddVersionKey "FileDescription" "${PRODUCT_NAME} Setup (Refined for LOQ 15IRX10)"
-VIAddVersionKey "FileVersion" "${VERSION}"
+VIAddVersionKey "FileVersion" "${NUMERIC_VERSION}"
 VIAddVersionKey "ProductVersion" "${VERSION}"
 
 ; Modern UI 2 Configuration
