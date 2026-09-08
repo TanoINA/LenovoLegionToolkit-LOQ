@@ -302,6 +302,11 @@ public class SensorsGroupController : IDisposable
 
                 PopulateHardware();
                 DiscoverHardware();
+
+                // Only mark initialized after a fully successful init. Setting this in
+                // `finally` meant a failed Open() permanently skipped all future init
+                // attempts until app restart.
+                _hardwareInitialized = true;
             }
             catch (Exception ex)
             {
@@ -311,7 +316,6 @@ public class SensorsGroupController : IDisposable
                 _hardware.Clear();
                 throw;
             }
-            finally { _hardwareInitialized = true; }
         }
     }
 
@@ -543,8 +547,24 @@ public class SensorsGroupController : IDisposable
             lock (_hardwareLock)
             {
                 _computer?.Close(); _hardware.Clear();
-                _computer?.Open();
-                _computer?.Reset();
+
+                try
+                {
+                    _computer?.Open();
+                    _computer?.Reset();
+                }
+                catch (Exception ex)
+                {
+                    // If reopen/reset fails the hardware list is now empty but
+                    // _hardwareInitialized is still true, which would permanently
+                    // prevent recovery. Tear down and flip the flag so the next
+                    // GetHardware() call retries from scratch.
+                    Log.Instance.Trace($"ResetHardware failed during Open/Reset: {ex}");
+                    _computer = null;
+                    _hardwareInitialized = false;
+                    return;
+                }
+
                 if (_computer == null)
                 {
                     return;

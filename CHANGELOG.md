@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Automation event flood & dropped events (AutomationProcessor)**: Rapid Fn+Q / AC plug-unplug bursts are coalesced via an `Interlocked` reentrancy guard, preventing unbounded `_runLock` queue growth. An event arriving mid-cycle is now processed in a trailing pass instead of being dropped, so state-based triggers (e.g. a `PowerMode=Performance` event landing mid-cycle) are acted upon.
 - **OSD multi-screen reuse race (NotificationWindow)**: `Close(bool)` is now idempotent and the `SourceInitialized` position update is guarded by `IsOpen`, fixing a race when the manager prunes a screen while the auto-close timer fires.
 - **dGPU Awake crash on dispose**: The `async void` power-state handler is wrapped in `try/catch` so an `ObjectDisposedException` or COM error during concurrent teardown can no longer propagate to the `SynchronizationContext` and crash the process. Added a post-lock `_isDisposed` re-check to close the window where a concurrent `DisposeAsync` could dispose the lock mid-acquire.
+- **Clean app exit & singleton disposal (`IoCContainer`)**: Added `Dispose()` to `IoCContainer` called on `Application_Exit` to ensure hardware controllers, sensor drivers, and background managers clean up unmanaged resources properly.
+- **Service hang prevention & SCM handle leak (`AbstractSoftwareDisabler`)**: Added 30-second timeouts to `WaitForStatus` calls and wrapped `ServiceController.GetServices()` in `try/finally` disposal.
+- **Sensor recovery resilience (`SensorsGroupController`)**: `_hardwareInitialized` is now only set true after successful hardware discovery, and reset failures clear initialized state so subsequent calls can retry and recover missing sensors.
+- **WPF async void exception guards**: Wrapped `async void` event handlers in dashboard controls (`DiscreteGPUControl`, `ITSModeControl`, `PowerModeControl`, `SpectrumKeyboardBacklightControl`) with `try/catch` logging to prevent UI crashes.
+- **WMI COM wrapper disposal (`WMI.cs`)**: Added explicit disposal for `ManagementObjectSearcher`, parameter collections, and query result objects.
 
 ### Tests
 - Added `SetStateLockReleaseTests` covering lock release on exception paths for ITS mode transitions.

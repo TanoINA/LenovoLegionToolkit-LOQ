@@ -46,23 +46,43 @@ public class PowerModeControl : AbstractComboBoxFeatureCardControl<PowerModeStat
         _powerModeListener.Changed += PowerModeListener_Changed;
     }
 
-    private async void ThermalModeListener_Changed(object? sender, ThermalModeListener.ChangedEventArgs e) => await _throttleDispatcher.DispatchAsync(async () =>
+    private async void ThermalModeListener_Changed(object? sender, ThermalModeListener.ChangedEventArgs e)
     {
-        await Dispatcher.InvokeAsync(async () =>
+        try
         {
-            if (IsLoaded && IsVisible)
-                await RefreshAsync();
-        });
-    });
+            await _throttleDispatcher.DispatchAsync(async () =>
+            {
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    if (IsLoaded && IsVisible)
+                        await RefreshAsync();
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"PowerModeControl: unhandled exception in ThermalModeListener_Changed.", ex);
+        }
+    }
 
-    private async void PowerModeListener_Changed(object? sender, PowerModeListener.ChangedEventArgs e) => await _throttleDispatcher.DispatchAsync(async () =>
+    private async void PowerModeListener_Changed(object? sender, PowerModeListener.ChangedEventArgs e)
     {
-        await Dispatcher.InvokeAsync(async () =>
+        try
         {
-            if (IsLoaded && IsVisible)
-                await RefreshAsync();
-        });
-    });
+            await _throttleDispatcher.DispatchAsync(async () =>
+            {
+                await Dispatcher.InvokeAsync(async () =>
+                {
+                    if (IsLoaded && IsVisible)
+                        await RefreshAsync();
+                });
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"PowerModeControl: unhandled exception in PowerModeListener_Changed.", ex);
+        }
+    }
 
     protected override async Task OnRefreshAsync()
     {

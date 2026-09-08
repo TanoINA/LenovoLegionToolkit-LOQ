@@ -46,25 +46,39 @@ public partial class DiscreteGPUControl
 
     private async void NativeWindowsMessageListener_Changed(object? sender, NativeWindowsMessageListener.ChangedEventArgs e)
     {
-        if (e.Message != NativeWindowsMessage.DisplayDeviceChanged)
-            return;
+        try
+        {
+            if (e.Message != NativeWindowsMessage.DisplayDeviceChanged)
+                return;
 
-        if (Window.GetWindow(this)?.WindowState == WindowState.Minimized)
-            return;
+            if (Window.GetWindow(this)?.WindowState == WindowState.Minimized)
+                return;
 
-        Visibility = Visibility.Visible;
-        await RefreshAsync();
+            Visibility = Visibility.Visible;
+            await RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"DiscreteGPUControl: unhandled exception in NativeWindowsMessageListener_Changed.", ex);
+        }
     }
 
     private async void DiscreteGPUControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (IsVisible)
-            return;
+        try
+        {
+            if (IsVisible)
+                return;
 
-        _content.Visibility = Visibility.Hidden;
+            _content.Visibility = Visibility.Hidden;
 
-        if (!_settings.Store.GameDetection.UseDiscreteGPU)
-            await _gpuController.StopAsync();
+            if (!_settings.Store.GameDetection.UseDiscreteGPU)
+                await _gpuController.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"DiscreteGPUControl: unhandled exception in IsVisibleChanged.", ex);
+        }
     }
 
     private void GpuController_Refreshed(object? sender, GPUStatus e) => Dispatcher.Invoke(() =>
