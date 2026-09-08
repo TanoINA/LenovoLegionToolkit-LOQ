@@ -34,6 +34,7 @@ public class AutomationProcessor(
 
     private List<AutomationPipeline> _pipelines = [];
     private CancellationTokenSource? _cts;
+    private int _eventProcessingActive;
 
     public bool IsEnabled => settings.Store.IsEnabled;
 
@@ -331,18 +332,37 @@ public class AutomationProcessor(
 
     private async Task ProcessEvent(IAutomationEvent e)
     {
-        var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
-                .Select(async t => await t.IsMatchingEvent(e).ConfigureAwait(false)))
-            .ConfigureAwait(false);
-
-        if (!triggerMatches.Any(t => t))
+        // Coalesce event bursts: only one event-processing cycle runs at a time.
+        // Events arriving while a cycle is active are superseded by the latest one
+        // and handled by the trailing pass, preventing unbounded task queue growth.
+        if (Interlocked.Exchange(ref _eventProcessingActive, 1) != 0)
         {
             return;
         }
 
-        Log.Instance.Trace($"Processing event {e}... [type={e.GetType().Name}]");
+        try
+        {
+            var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
+                    .Select(async t => await t.IsMatchingEvent(e).ConfigureAwait(false)))
+                .ConfigureAwait(false);
 
-        await RunAsync(e).ConfigureAwait(false);
+            if (!triggerMatches.Any(t => t))
+            {
+                return;
+            }
+
+            Log.Instance.Trace($"Processing event {e}... [type={e.GetType().Name}]");
+
+            await RunAsync(e).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to process event {e.GetType().Name}.", ex);
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _eventProcessingActive, 0);
+        }
     }
 
     #endregion

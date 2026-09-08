@@ -61,6 +61,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
     private volatile bool _pendingOverlaySync;
     private CancellationTokenSource? _overlayTimeoutCts;
     private readonly global::System.Threading.SemaphoreSlim _itsLock = new(1, 1);
+    private readonly global::System.Threading.SemaphoreSlim _setStateLock = new(1, 1);
 
     public ITSMode LastItsMode { get; set; } = ITSMode.None;
 
@@ -173,64 +174,72 @@ public partial class ITSModeFeature : IFeature<ITSMode>
             return;
         }
 
-        if (await UseExperimentalDriverAsync().ConfigureAwait(false))
+        await _setStateLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            await _driverFeature.SetStateAsync(state).ConfigureAwait(false);
-            LastItsMode = state;
+            if (await UseExperimentalDriverAsync().ConfigureAwait(false))
+            {
+                await _driverFeature.SetStateAsync(state).ConfigureAwait(false);
+                LastItsMode = state;
+
+                if (showNotification)
+                {
+                    ITSModeListener.PublishNotification(state);
+                }
+
+                SaveCurrentStateToSettings(state);
+                return;
+            }
+
+            if (!(await GetAllStatesAsync().ConfigureAwait(false)).Contains(state))
+            {
+                throw new InvalidOperationException($"Unsupported ITS mode {state}.");
+            }
+
+            Log.Instance.Trace($"Setting ITS mode to: {state}");
 
             if (showNotification)
             {
                 ITSModeListener.PublishNotification(state);
             }
 
-            SaveCurrentStateToSettings(state);
-            return;
-        }
-
-        if (!(await GetAllStatesAsync().ConfigureAwait(false)).Contains(state))
-        {
-            throw new InvalidOperationException($"Unsupported ITS mode {state}.");
-        }
-
-        Log.Instance.Trace($"Setting ITS mode to: {state}");
-
-        if (showNotification)
-        {
-            ITSModeListener.PublishNotification(state);
-        }
-
-        try
-        {
-            await SetITSModeExAsync(state).ConfigureAwait(false);
-
-            if (!await WaitForITSModeAsync(state, CancellationToken.None).ConfigureAwait(false))
+            try
             {
-                throw new InvalidOperationException($"ITS mode did not change to {state}.");
+                await SetITSModeExAsync(state).ConfigureAwait(false);
+
+                if (!await WaitForITSModeAsync(state, CancellationToken.None).ConfigureAwait(false))
+                {
+                    throw new InvalidOperationException($"ITS mode did not change to {state}.");
+                }
+
+                LastItsMode = state;
+
+                Log.Instance.Trace($"ITS mode set successfully to: {state}");
+
+                if (WindowsPowerModeController.IsOverlaySupported)
+                {
+                    _pendingOverlaySync = true;
+                    _overlayTimeoutCts?.Cancel();
+                    _overlayTimeoutCts?.Dispose();
+                    _overlayTimeoutCts = new CancellationTokenSource();
+                    _ = WaitForOverlayOrTimeoutAsync(_overlayTimeoutCts.Token);
+                }
+                else
+                {
+                    await ApplyPowerChanges().ConfigureAwait(false);
+                }
+
+                SaveCurrentStateToSettings(state);
             }
-
-            LastItsMode = state;
-
-            Log.Instance.Trace($"ITS mode set successfully to: {state}");
-
-            if (WindowsPowerModeController.IsOverlaySupported)
+            catch (Exception ex)
             {
-                _pendingOverlaySync = true;
-                _overlayTimeoutCts?.Cancel();
-                _overlayTimeoutCts?.Dispose();
-                _overlayTimeoutCts = new CancellationTokenSource();
-                _ = WaitForOverlayOrTimeoutAsync(_overlayTimeoutCts.Token);
+                Log.Instance.Trace($"Failed to set ITS mode to {state}", ex);
+                throw;
             }
-            else
-            {
-                await ApplyPowerChanges().ConfigureAwait(false);
-            }
-
-            SaveCurrentStateToSettings(state);
         }
-        catch (Exception ex)
+        finally
         {
-            Log.Instance.Trace($"Failed to set ITS mode to {state}", ex);
-            throw;
+            _setStateLock.Release();
         }
     }
 
