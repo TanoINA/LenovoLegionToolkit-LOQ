@@ -1,7 +1,7 @@
 @echo off
 SET PATH=D:\dotnet9;%USERPROFILE%\.dotnet;%PATH%;"%LOCALAPPDATA%\Programs\NSIS";"C:\Program Files (x86)\NSIS";"C:\Program Files\NSIS"
 
-SET VERSION=2.35.4.5
+SET VERSION=2.35.4.6
 IF NOT "%1"=="" IF /I NOT "%1"=="raw" SET VERSION=%1
 
 for /f %%i in ('powershell -NoProfile -Command "Get-Date -Format yyyyMMdd"') do set BUILD_DATE=%%i
