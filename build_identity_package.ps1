@@ -161,7 +161,10 @@ function Write-FallbackIdentityFiles {
     Copy-Item "LenovoLegionToolkit.cer" -Destination (Join-Path $DestinationDir "LenovoLegionToolkit.cer") -Force
 }
 
-$normalizedVersion = [Version]$Version
+# Strip any SemVer prerelease suffix (e.g. "-loq", "-rc1") before casting to
+# [Version]; the MSIX/AppxManifest version must be a clean Major.Minor.Build.Revision.
+$versionCore = ($Version -split '-')[0]
+$normalizedVersion = [Version]$versionCore
 $resolvedVersionParts = @(
     $normalizedVersion.Major,
     $normalizedVersion.Minor,
