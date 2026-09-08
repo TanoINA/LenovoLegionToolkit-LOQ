@@ -72,7 +72,11 @@ public class NotificationWindow : UiWindow, INotificationWindow
         _screenInfo = screenInfo;
         _clickAction = clickAction;
 
-        SourceInitialized += (_, _) => InitializePosition(screenInfo.WorkArea, screenInfo.DpiX, screenInfo.DpiY, position);
+        SourceInitialized += (_, _) =>
+        {
+            if (IsOpen)
+                InitializePosition(screenInfo.WorkArea, screenInfo.DpiX, screenInfo.DpiY, position);
+        };
         MouseDown += (_, _) =>
         {
             Close();
@@ -155,10 +159,16 @@ public class NotificationWindow : UiWindow, INotificationWindow
 
     public void Close(bool immediate)
     {
+        // Idempotent: a second close (e.g. from the manager pruning a screen while the
+        // auto-close timer fires) must be a safe no-op to avoid a re-entrancy race.
+        if (!IsOpen)
+            return;
+
         IsOpen = false;
         _closeCts?.Cancel();
         _closeCts = null;
-        WindowStyle = WindowStyle.None;
+        if (immediate)
+            WindowStyle = WindowStyle.None;
         base.Close();
     }
 

@@ -26,6 +26,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
     private bool _isActive;
     private int _isPulsing;
     private CancellationTokenSource? _pulseCts;
+    private DateTime _lastAdapterChangeHandled = DateTime.MinValue;
+    private static readonly TimeSpan AdapterChangeDebounce = TimeSpan.FromMilliseconds(500);
 
     public void CancelPulse()
     {
@@ -42,8 +44,18 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         _powerStateListener = powerStateListener;
 
         _powerStateListener.Changed += PowerStateListener_Changed;
-        
-        _ = UpdateStateAsync();
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await UpdateStateAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed to initialize dGPU awake manager state.", ex);
+            }
+        });
     }
 
     private async void PowerStateListener_Changed(object? sender, PowerStateListener.ChangedEventArgs e)
@@ -61,6 +73,15 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         }
         else if (e.PowerAdapterStateChanged)
         {
+            // Debounce transient ACLineStatus spikes (e.g. 255) that fire rapid AC change events.
+            var now = DateTime.UtcNow;
+            if (now - _lastAdapterChangeHandled < AdapterChangeDebounce)
+            {
+                Log.Instance.Trace($"Power adapter state change debounced (transient spike suppressed).");
+                return;
+            }
+            _lastAdapterChangeHandled = now;
+
             Log.Instance.Trace($"Power adapter state changed: updating dGPU awake manager.");
             var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
             if (acStatus != PowerAdapterStatus.Connected)
