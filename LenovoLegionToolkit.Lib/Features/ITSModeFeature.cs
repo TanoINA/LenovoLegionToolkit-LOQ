@@ -58,7 +58,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
     private bool? _energyDriverPresent;
     private bool? _geekModeSupported;
     private volatile bool _legacyGeekModeActive;
-    private volatile bool _pendingOverlaySync;
+    private int _pendingOverlaySync;
     private CancellationTokenSource? _overlayTimeoutCts;
     private readonly global::System.Threading.SemaphoreSlim _itsLock = new(1, 1);
     private readonly global::System.Threading.SemaphoreSlim _setStateLock = new(1, 1);
@@ -95,12 +95,13 @@ public partial class ITSModeFeature : IFeature<ITSMode>
     {
         Log.Instance.Trace($"Power overlay changed: AC={e.ActiveOverlayAc}, DC={e.ActiveOverlayDc}, Plan={e.ActivePowerPlan}");
 
-        if (!_pendingOverlaySync)
+        // Atomic claim: only one of (OnPowerChanged, WaitForOverlayOrTimeoutAsync)
+        // may clear the pending flag and trigger ApplyPowerChanges.
+        if (Interlocked.Exchange(ref _pendingOverlaySync, 0) == 0)
         {
             return;
         }
 
-        _pendingOverlaySync = false;
         _overlayTimeoutCts?.Cancel();
 
         await ApplyPowerChanges().ConfigureAwait(false);
@@ -218,7 +219,7 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
                 if (WindowsPowerModeController.IsOverlaySupported)
                 {
-                    _pendingOverlaySync = true;
+                    Interlocked.Exchange(ref _pendingOverlaySync, 1);
                     _overlayTimeoutCts?.Cancel();
                     _overlayTimeoutCts?.Dispose();
                     _overlayTimeoutCts = new CancellationTokenSource();
@@ -723,13 +724,13 @@ public partial class ITSModeFeature : IFeature<ITSMode>
             return;
         }
 
-        if (!_pendingOverlaySync)
+        // Atomic claim: if OnPowerChanged already consumed the pending sync, skip.
+        if (Interlocked.Exchange(ref _pendingOverlaySync, 0) == 0)
         {
             return;
         }
 
         Log.Instance.Trace($"Overlay timeout, force overriding.");
-        _pendingOverlaySync = false;
         await ApplyPowerChanges().ConfigureAwait(false);
     }
 }

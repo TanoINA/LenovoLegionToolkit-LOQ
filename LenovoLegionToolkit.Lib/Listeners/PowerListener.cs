@@ -34,6 +34,11 @@ public class PowerListener(IMainThreadDispatcher mainThreadDispatcher) : NativeW
     private Guid _overlayDc;
     private Guid _powerPlan;
 
+    // Guards the overlay/plan snapshot below: CheckForChanges can run on the UI
+    // thread (PBT_POWERSETTINGCHANGE via WndProc) and the background poll loop
+    // concurrently, and Guid reads/writes are not atomic.
+    private readonly object _stateLock = new();
+
     private volatile bool _enabled;
 
     public event EventHandler<ChangedEventArgs>? Changed;
@@ -167,15 +172,22 @@ public class PowerListener(IMainThreadDispatcher mainThreadDispatcher) : NativeW
     {
         var ac = ReadOverlayAc();
         var dc = ReadOverlayDc();
-        if (ac != _overlayAc || dc != _overlayDc)
+
+        lock (_stateLock)
         {
+            if (ac == _overlayAc && dc == _overlayDc)
+            {
+                return;
+            }
+
             var plan = TrackPowerPlan ? ReadPowerPlan() : Guid.Empty;
             Log.Instance.Trace($"Overlay changed: AC={WindowsPowerModeController.WindowsPowerModeNameFromGuid(ac) ?? ac.ToString()}, DC={WindowsPowerModeController.WindowsPowerModeNameFromGuid(dc) ?? dc.ToString()}, PowerPlan={(TrackPowerPlan ? $"{WindowsPowerPlanController.GetPowerPlanName(plan)} [{plan}]" : "N/A")}");
             _overlayAc = ac;
             _overlayDc = dc;
             _powerPlan = plan;
-            RaiseChanged();
         }
+
+        RaiseChanged();
     }
 
     private void RaiseChanged()
