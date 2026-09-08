@@ -1,5 +1,19 @@
 ## What's Changed
 
+### Bug Fixes (Hotfix v2.35.4.6)
+* **Fn+Q Permanent Deadlock (ITSModeFeature)**: Fixed a regression risk where the ITS mode lock could be held permanently if `SetStateAsync` threw `InvalidOperationException` (unsupported state or mode-not-changed). A dedicated `_setStateLock` with `try/finally Release()` now guarantees the lock is released on every exception path, matching the proven `PowerModeListener` pattern.
+* **dGPU Awake Silent Init Failure (DgpuAwakeManager)**: Constructor `UpdateStateAsync()` fire-and-forget is now wrapped in `try/catch` so D3D11/IDXGIFactory6 init failures are logged instead of swallowed.
+* **dGPU Awake Flapping on AC Spikes (DgpuAwakeManager)**: Debounced transient `ACLineStatus` 255 readings on the AC-change handler (500ms) to stop rapid dGPU-awake on/off oscillation, consistent with `PowerStateListener`.
+* **Automation Event Flood (AutomationProcessor)**: Event bursts are now coalesced via an `Interlocked` reentrancy guard in `ProcessEvent`, preventing unbounded `_runLock` queue growth during rapid Fn+Q / AC events.
+* **OSD Multi-Screen Reuse Race (NotificationWindow)**: `Close(bool)` is now idempotent and `SourceInitialized` position update is guarded by `IsOpen`, fixing a race when the manager prunes a screen while the auto-close timer fires.
+
+### Quality & Tests
+* Added `SetStateLockReleaseTests` covering lock release on exception paths for ITS mode transitions.
+
+---
+
+## What's Changed
+
 ### Bug Fixes
 * **Power Mode Switching Loop (Fn+Q)**: Fixed an issue where switching power modes (e.g. from Balance/Quiet to Performance) caused rapid, repeated looping between modes. Mode transitions are now strictly serialized to prevent WMI event race conditions.
 * **OSD Notification Delay**: Fixed a noticeable delay (several seconds) when displaying on-screen notifications (FnLock, CapsLock, Touchpad, Refresh Rate, Power Mode). Service checks are now cached (5s TTL) and notification windows are reused in-place to avoid flicker and DWM lag.

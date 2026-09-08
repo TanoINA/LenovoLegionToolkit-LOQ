@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [2.35.4.6-loq] - 2026-09-09
+
+### Fixed
+- **Fn+Q Permanent Deadlock (ITSModeFeature)**:
+  - Resolved a regression risk where `SetStateAsync` could permanently hold the ITS mode lock (`_setStateLock`) if an `InvalidOperationException` was thrown (unsupported state or mode-not-changed) before the lock was released. Introduced a dedicated `_setStateLock` with strict `try/finally Release()` so every exception path releases the lock, matching the proven pattern in `PowerModeListener`.
+- **dGPU Awake Silent Init Failure (DgpuAwakeManager)**:
+  - Wrapped the constructor's fire-and-forget `UpdateStateAsync()` in a `try/catch` so D3D11/IDXGIFactory6 initialization failures are logged instead of being swallowed unobserved.
+- **dGPU Awake Flapping on AC Spikes (DgpuAwakeManager)**:
+  - Debounced transient `ACLineStatus` 255 readings on the AC-change handler (500ms window) to stop rapid `CancelPulse`/`UpdateStateAsync` oscillation, consistent with the `PowerStateListener` hardening.
+- **Automation Event Flood (AutomationProcessor)**:
+  - Coalesced rapid event bursts with an `Interlocked` reentrancy guard in `ProcessEvent` to prevent unbounded `_runLock` task queue growth during Fn+Q / AC plug-unplug bursts.
+- **OSD Multi-Screen Reuse Race (NotificationWindow)**:
+  - Made `Close(bool immediate)` idempotent (`if (!IsOpen) return`) and guarded `SourceInitialized` position update with `IsOpen` to fix a race when the manager prunes a screen while the auto-close timer fires.
+
+### Tests
+- Added `SetStateLockReleaseTests` covering exception-inside-critical-section lock release for ITS mode transitions, expanding the concurrency safety net beyond the simulated `PowerModeConcurrencyTests`.
+
+---
+
 ## [2.35.4.5-loq] - 2026-09-08
 
 ### Added
