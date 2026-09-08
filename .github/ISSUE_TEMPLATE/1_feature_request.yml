@@ -6,7 +6,7 @@ body:
     attributes:
       value: |
         > [!IMPORTANT]
-        > Before you start, read [the rules](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit?tab=contributing-ov-file) for contributing.
+        > Before you start, read [the rules](https://github.com/TanoINA/LenovoLegionToolkit-LOQ?tab=contributing-ov-file) for contributing.
   
   - type: input
     id: version

@@ -7,22 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [2.35.4.6-loq] - 2026-09-09
+## [2.35.4.6-loq] - 2026-09-08
 
 ### Fixed
-- **Fn+Q Permanent Deadlock (ITSModeFeature)**:
-  - Resolved a regression risk where `SetStateAsync` could permanently hold the ITS mode lock (`_setStateLock`) if an `InvalidOperationException` was thrown (unsupported state or mode-not-changed) before the lock was released. Introduced a dedicated `_setStateLock` with strict `try/finally Release()` so every exception path releases the lock, matching the proven pattern in `PowerModeListener`.
-- **dGPU Awake Silent Init Failure (DgpuAwakeManager)**:
-  - Wrapped the constructor's fire-and-forget `UpdateStateAsync()` in a `try/catch` so D3D11/IDXGIFactory6 initialization failures are logged instead of being swallowed unobserved.
-- **dGPU Awake Flapping on AC Spikes (DgpuAwakeManager)**:
-  - Debounced transient `ACLineStatus` 255 readings on the AC-change handler (500ms window) to stop rapid `CancelPulse`/`UpdateStateAsync` oscillation, consistent with the `PowerStateListener` hardening.
-- **Automation Event Flood (AutomationProcessor)**:
-  - Coalesced rapid event bursts with an `Interlocked` reentrancy guard in `ProcessEvent` to prevent unbounded `_runLock` task queue growth during Fn+Q / AC plug-unplug bursts.
-- **OSD Multi-Screen Reuse Race (NotificationWindow)**:
-  - Made `Close(bool immediate)` idempotent (`if (!IsOpen) return`) and guarded `SourceInitialized` position update with `IsOpen` to fix a race when the manager prunes a screen while the auto-close timer fires.
+- **Fn+Q deadlock (ITSModeFeature)**: `SetStateAsync` could hold the ITS mode lock (`_setStateLock`) permanently if it threw `InvalidOperationException` before releasing it. The lock now releases in a `finally` block on every path, matching the pattern in `PowerModeListener`.
+- **dGPU Awake silent init failure**: The constructor's fire-and-forget `UpdateStateAsync()` is wrapped in `try/catch` so D3D11/IDXGIFactory6 init failures are logged instead of swallowed.
+- **dGPU Awake flapping on AC spikes**: Transient `ACLineStatus=255` readings on the AC-change handler are debounced (500ms) to stop rapid on/off oscillation.
+- **Automation event flood & dropped events (AutomationProcessor)**: Rapid Fn+Q / AC plug-unplug bursts are coalesced via an `Interlocked` reentrancy guard, preventing unbounded `_runLock` queue growth. An event arriving mid-cycle is now processed in a trailing pass instead of being dropped, so state-based triggers (e.g. a `PowerMode=Performance` event landing mid-cycle) are acted upon.
+- **OSD multi-screen reuse race (NotificationWindow)**: `Close(bool)` is now idempotent and the `SourceInitialized` position update is guarded by `IsOpen`, fixing a race when the manager prunes a screen while the auto-close timer fires.
+- **dGPU Awake crash on dispose**: The `async void` power-state handler is wrapped in `try/catch` so an `ObjectDisposedException` or COM error during concurrent teardown can no longer propagate to the `SynchronizationContext` and crash the process. Added a post-lock `_isDisposed` re-check to close the window where a concurrent `DisposeAsync` could dispose the lock mid-acquire.
 
 ### Tests
-- Added `SetStateLockReleaseTests` covering exception-inside-critical-section lock release for ITS mode transitions, expanding the concurrency safety net beyond the simulated `PowerModeConcurrencyTests`.
+- Added `SetStateLockReleaseTests` covering lock release on exception paths for ITS mode transitions.
+- Added `ProcessEventCoalescingTests` (3 tests) verifying burst event concurrency stays at 1 and the latest event arriving mid-cycle is processed, not dropped.
 
 ---
 
