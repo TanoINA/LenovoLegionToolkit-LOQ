@@ -15,9 +15,16 @@ public static partial class WMI
         try
         {
             var queryFormatted = query.ToString(WMIPropertyValueFormatter.Instance);
-            var mos = new ManagementObjectSearcher(scope, queryFormatted);
+            using var mos = new ManagementObjectSearcher(scope, queryFormatted);
             var managementObjects = await mos.GetAsync().ConfigureAwait(false);
-            return managementObjects.Any();
+            try
+            {
+                return managementObjects.Any();
+            }
+            finally
+            {
+                foreach (var mo in managementObjects) (mo as IDisposable)?.Dispose();
+            }
         }
         catch
         {
@@ -44,9 +51,12 @@ public static partial class WMI
         try
         {
             var queryFormatted = query.ToString(WMIPropertyValueFormatter.Instance);
-            var mos = new ManagementObjectSearcher(scope, queryFormatted);
+            using var mos = new ManagementObjectSearcher(scope, queryFormatted);
             var managementObjects = await mos.GetAsync().ConfigureAwait(false);
-            var result = managementObjects.Select(mo => mo.Properties).Select(converter);
+            // Materialize the projection before disposing the ManagementObjects so
+            // deferred evaluation doesn't touch disposed COM wrappers.
+            var result = managementObjects.Select(mo => mo.Properties).Select(converter).ToList();
+            foreach (var mo in managementObjects) (mo as IDisposable)?.Dispose();
             return result;
         }
         catch (ManagementException ex)
@@ -60,16 +70,23 @@ public static partial class WMI
         try
         {
             var queryFormatted = query.ToString(WMIPropertyValueFormatter.Instance);
-            var mos = new ManagementObjectSearcher(scope, queryFormatted);
+            using var mos = new ManagementObjectSearcher(scope, queryFormatted);
             var managementObjects = await mos.GetAsync().ConfigureAwait(false);
-            var managementObject = managementObjects.FirstOrDefault() ?? throw new InvalidOperationException("No results in query");
+            try
+            {
+                var managementObject = managementObjects.FirstOrDefault() ?? throw new InvalidOperationException("No results in query");
 
-            var mo = (ManagementObject)managementObject;
-            var methodParamsObject = mo.GetMethodParameters(methodName);
-            foreach (var pair in methodParams)
-                methodParamsObject[pair.Key] = pair.Value;
+                var mo = (ManagementObject)managementObject;
+                using var methodParamsObject = mo.GetMethodParameters(methodName);
+                foreach (var pair in methodParams)
+                    methodParamsObject[pair.Key] = pair.Value;
 
-            mo.InvokeMethod(methodName, methodParamsObject, new InvokeMethodOptions());
+                using var _ = mo.InvokeMethod(methodName, methodParamsObject, new InvokeMethodOptions());
+            }
+            finally
+            {
+                foreach (var mo in managementObjects) (mo as IDisposable)?.Dispose();
+            }
         }
         catch (ManagementException ex)
         {
@@ -84,18 +101,25 @@ public static partial class WMI
         {
             var queryFormatted = query.ToString(WMIPropertyValueFormatter.Instance);
 
-            var mos = new ManagementObjectSearcher(scope, queryFormatted);
+            using var mos = new ManagementObjectSearcher(scope, queryFormatted);
             var managementObjects = await mos.GetAsync().ConfigureAwait(false);
-            var managementObject = managementObjects.FirstOrDefault() ?? throw new InvalidOperationException("No results in query");
+            try
+            {
+                var managementObject = managementObjects.FirstOrDefault() ?? throw new InvalidOperationException("No results in query");
 
-            var mo = (ManagementObject)managementObject;
-            var methodParamsObject = mo.GetMethodParameters(methodName);
-            foreach (var pair in methodParams)
-                methodParamsObject[pair.Key] = pair.Value;
+                var mo = (ManagementObject)managementObject;
+                using var methodParamsObject = mo.GetMethodParameters(methodName);
+                foreach (var pair in methodParams)
+                    methodParamsObject[pair.Key] = pair.Value;
 
-            var resultProperties = mo.InvokeMethod(methodName, methodParamsObject, new InvokeMethodOptions());
-            var result = converter(resultProperties.Properties);
-            return result;
+                using var resultProperties = mo.InvokeMethod(methodName, methodParamsObject, new InvokeMethodOptions());
+                var result = converter(resultProperties.Properties);
+                return result;
+            }
+            finally
+            {
+                foreach (var mo in managementObjects) (mo as IDisposable)?.Dispose();
+            }
         }
         catch (ManagementException ex)
         {

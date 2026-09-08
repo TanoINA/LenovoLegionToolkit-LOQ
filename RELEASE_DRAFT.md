@@ -12,6 +12,11 @@ Follow-up release fixing a few concurrency and stability issues that slipped thr
 - **Automation event flood & dropped events** - rapid Fn+Q / AC plug-unplug bursts are coalesced via an `Interlocked` reentrancy guard; an event arriving mid-cycle is now processed in a trailing pass instead of being dropped, so state-based triggers (e.g. `PowerMode=Performance` landing mid-cycle) are acted upon.
 - **OSD multi-screen reuse race** - `Close(bool)` is now idempotent and the `SourceInitialized` position update is guarded by `IsOpen`, fixing a crash when a screen is pruned while the auto-close timer fires.
 - **dGPU Awake crash on dispose** - the `async void` power-state handler is wrapped in `try/catch` so an `ObjectDisposedException`/COM error during teardown can't crash the process; added a post-lock `_isDisposed` re-check against concurrent `DisposeAsync`.
+- **Clean exit & singleton disposal** - added `IoCContainer.Dispose()` on `Application_Exit` to ensure hardware sensor drivers and controllers release resources cleanly.
+- **Service hang prevention & SCM leaks** - added 30s timeouts to `WaitForStatus` and wrapped `ServiceController.GetServices()` in explicit disposal.
+- **Sensor recovery resilience** - hardware initialization flag only set upon success, allowing automatic recovery if initial discovery fails.
+- **WPF async void exception guards** - wrapped UI event handlers in try/catch to prevent unhandled exceptions from crashing the application.
+- **WMI COM resource cleanup** - explicit disposal for WMI searchers, parameter objects, and result collections.
 - **Packaging & Build System** - hardened `make_nsis.bat` and `make_installer.nsi` to cleanly separate `NUMERIC_VERSION` from `-loq` SemVer tag and clean build staging directory.
 
 ### Tests

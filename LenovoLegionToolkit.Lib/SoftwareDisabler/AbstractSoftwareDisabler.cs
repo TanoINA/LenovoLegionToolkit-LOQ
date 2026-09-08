@@ -239,11 +239,22 @@ public abstract class AbstractSoftwareDisabler
         {
             Log.Instance.Trace($"Setting service {serviceName} to {enabled}. [type={GetType().Name}]");
 
-            if (!ServiceController.GetServices().Any(s => s.ServiceName == serviceName))
+            // Wrap GetServices() so the returned ServiceController array (potentially
+            // hundreds of unmanaged SCM handles) is always disposed. Previously this
+            // leaked the whole array on every enable/disable toggle.
+            var allServices = ServiceController.GetServices();
+            try
             {
-                Log.Instance.Trace($"Service {serviceName} not found. [type={GetType().Name}]");
+                if (!allServices.Any(s => s.ServiceName == serviceName))
+                {
+                    Log.Instance.Trace($"Service {serviceName} not found. [type={GetType().Name}]");
 
-                return;
+                    return;
+                }
+            }
+            finally
+            {
+                foreach (var s in allServices) s.Dispose();
             }
 
             var service = new ServiceController(serviceName);
@@ -260,7 +271,9 @@ public abstract class AbstractSoftwareDisabler
                     {
                         Log.Instance.Trace($"Starting service {serviceName}... [type={GetType().Name}]");
                         service.Start();
-                        service.WaitForStatus(ServiceControllerStatus.Running);
+                        // 30s timeout: WaitForStatus without a timeout can block the
+                        // thread pool forever if a service hangs in StartPending.
+                        service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
                     }
                     else
                     {
@@ -273,7 +286,8 @@ public abstract class AbstractSoftwareDisabler
                     {
                         Log.Instance.Trace($"Stopping service {serviceName}... [type={GetType().Name}]");
                         service.Stop();
-                        service.WaitForStatus(ServiceControllerStatus.Stopped);
+                        // Same 30s timeout for the stop path.
+                        service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
                     }
                     else
                     {

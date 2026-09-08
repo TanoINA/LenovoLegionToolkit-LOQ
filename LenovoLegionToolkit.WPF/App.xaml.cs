@@ -386,6 +386,16 @@ public partial class App
     private void Application_Exit(object sender, ExitEventArgs e)
     {
         _singleInstanceMutex?.Close();
+
+        // Dispose the Autofac container so that all singleton services implementing
+        // IDisposable/IAsyncDisposable (SensorsGroupController, FpsSensorController,
+        // LampArrayController, SmartFnLockController, DgpuAwakeManager, ...) release
+        // their hardware/WMI/COM resources cleanly on app exit.
+        try
+        {
+            IoCContainer.Dispose();
+        }
+        catch { /* Ignore */ }
     }
 
     public async Task ShutdownAsync()

@@ -61,4 +61,13 @@ public static class IoCContainer
         }
     }
 
+    public static void Dispose()
+    {
+        lock (Lock)
+        {
+            _container?.Dispose();
+            _container = null;
+        }
+    }
+
 }

@@ -155,25 +155,36 @@ public partial class SpectrumKeyboardBacklightControl
             }
         });
 
-    private async void BrightnessSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) =>
-        await _changeBrightnessDispatcher.DispatchAsync(async () =>
+    private async void BrightnessSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e)
+    {
+        try
         {
-            await Dispatcher.InvokeAsync(async () =>
+            await _changeBrightnessDispatcher.DispatchAsync(async () =>
             {
-                var value = (int)_brightnessSlider.Value;
-                if (await _controller.GetBrightnessAsync() != value)
+                await Dispatcher.InvokeAsync(async () =>
                 {
-                    await _controller.SetBrightnessAsync(value);
-                }
+                    var value = (int)_brightnessSlider.Value;
+                    if (await _controller.GetBrightnessAsync() != value)
+                    {
+                        await _controller.SetBrightnessAsync(value);
+                    }
+                });
             });
-        });
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"SpectrumKeyboardBacklightControl: unhandled exception in BrightnessSlider_OnValueChanged.", ex);
+        }
+    }
 
     private async void ProfileButton_OnClick(object sender, RoutedEventArgs e)
     {
-        await StopAnimationAsync();
+        try
+        {
+            await StopAnimationAsync();
 
-        if ((sender as RadioButton)?.Tag is not int profile)
-            return;
+            if ((sender as RadioButton)?.Tag is not int profile)
+                return;
 
         _brightnessSlider.IsEnabled = false;
         foreach (var profileButton in ProfileButtons)
@@ -191,6 +202,11 @@ public partial class SpectrumKeyboardBacklightControl
 
         if (IsVisible)
             await StartAnimationAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"SpectrumKeyboardBacklightControl: unhandled exception in ProfileButton_OnClick.", ex);
+        }
     }
 
     private void SelectableControl_Selected(object? sender, SelectableControl.SelectedEventArgs e)
