@@ -23,6 +23,25 @@ public class PowerModeListener(
         public PowerModeState State { get; } = state;
     }
 
+    private readonly ThreadSafeCounter _suppressCounter = new();
+    private readonly object _stateLock = new();
+    private DateTime _lastProcessedTime = DateTime.MinValue;
+    private PowerModeState? _lastProcessedValue;
+
+    public void SuppressNext()
+    {
+        Log.Instance.Trace($"PowerModeListener: Suppressing next...");
+        _suppressCounter.Increment();
+    }
+
+    public bool IsRecentlyProcessed(PowerModeState value, TimeSpan window)
+    {
+        lock (_stateLock)
+        {
+            return _lastProcessedValue == value && (DateTime.UtcNow - _lastProcessedTime) < window;
+        }
+    }
+
     protected override PowerModeState GetValue(int value)
     {
         var result = (PowerModeState)(value - 1);
@@ -33,6 +52,24 @@ public class PowerModeListener(
 
     protected override async Task OnChangedAsync(PowerModeState value)
     {
+        if (!_suppressCounter.Decrement())
+        {
+            Log.Instance.Trace($"PowerModeListener: Suppressed WMI event for {value}.");
+            return;
+        }
+
+        lock (_stateLock)
+        {
+            var now = DateTime.UtcNow;
+            if (_lastProcessedValue == value && (now - _lastProcessedTime).TotalMilliseconds < 300)
+            {
+                Log.Instance.Trace($"PowerModeListener: Debounced duplicate event {value} within {(now - _lastProcessedTime).TotalMilliseconds:F0}ms.");
+                return;
+            }
+            _lastProcessedValue = value;
+            _lastProcessedTime = now;
+        }
+
         PublishNotification(value);
         Log.Instance.Trace($"PowerModeListener.OnChangedAsync (WMI event path): value={value}");
         var sw = Stopwatch.StartNew();
@@ -42,6 +79,12 @@ public class PowerModeListener(
 
     public async Task NotifyAsync(PowerModeState value)
     {
+        lock (_stateLock)
+        {
+            _lastProcessedValue = value;
+            _lastProcessedTime = DateTime.UtcNow;
+        }
+
         Log.Instance.Trace($"PowerModeListener.NotifyAsync (explicit path): value={value}");
         var sw = Stopwatch.StartNew();
         await ChangeDependenciesAsync(value).ConfigureAwait(false);

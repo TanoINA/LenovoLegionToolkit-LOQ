@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Controllers;
 using LenovoLegionToolkit.Lib.System.Management;
@@ -8,7 +8,8 @@ namespace LenovoLegionToolkit.Lib.Listeners;
 
 public class ThermalModeListener(
     WindowsPowerModeController windowsPowerModeController,
-    WindowsPowerPlanController windowsPowerPlanController)
+    WindowsPowerPlanController windowsPowerPlanController,
+    PowerModeListener powerModeListener)
     : AbstractWMIListener<ThermalModeListener.ChangedEventArgs, ThermalModeState, int>(WMI.LenovoGameZoneThermalModeEvent.Listen)
 {
     public class ChangedEventArgs(ThermalModeState state) : EventArgs
@@ -56,6 +57,12 @@ public class ThermalModeListener(
             ThermalModeState.GodMode => PowerModeState.GodMode,
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
         };
+
+        if (powerModeListener.IsRecentlyProcessed(powerModeState, TimeSpan.FromMilliseconds(500)))
+        {
+            Log.Instance.Trace($"ThermalModeListener: state {state} already processed recently by PowerModeListener. Skipping redundant apply.");
+            return;
+        }
 
         Log.Instance.Trace($"ThermalModeListener mapping: ThermalMode={state} -> PowerMode={powerModeState}");
 

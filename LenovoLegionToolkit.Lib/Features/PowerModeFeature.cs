@@ -1,4 +1,4 @@
-﻿using LenovoLegionToolkit.Lib.Controllers;
+using LenovoLegionToolkit.Lib.Controllers;
 using LenovoLegionToolkit.Lib.Controllers.GodMode;
 using LenovoLegionToolkit.Lib.Listeners;
 using LenovoLegionToolkit.Lib.System;
@@ -74,6 +74,7 @@ public class PowerModeFeature(
         {
             Log.Instance.Trace($"Workaround: Quiet->Performance bug, routing via Balance");
             thermalModeListener.SuppressNext();
+            powerModeListener.SuppressNext();
             await base.SetStateAsync(PowerModeState.Balance).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
@@ -82,6 +83,7 @@ public class PowerModeFeature(
         {
             Log.Instance.Trace($"Workaround: GodMode->other bug, routing via {state} intermediate");
             thermalModeListener.SuppressNext();
+            powerModeListener.SuppressNext();
 
             switch (state)
             {
@@ -104,6 +106,7 @@ public class PowerModeFeature(
 
         var sw = Stopwatch.StartNew();
         thermalModeListener.SuppressNext();
+        powerModeListener.SuppressNext();
         Log.Instance.Trace($"Calling SetSmartFanModeAsync({(int)(object)state + 1})...");
         await base.SetStateAsync(state).ConfigureAwait(false);
         Log.Instance.Trace($"SetSmartFanModeAsync completed [elapsed={sw.ElapsedMilliseconds}ms]");
