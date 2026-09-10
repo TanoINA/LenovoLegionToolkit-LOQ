@@ -94,14 +94,25 @@ public class PowerModeControl : AbstractComboBoxFeatureCardControl<PowerModeStat
             Warning = Resource.PowerModeControl_Warning;
         else
             Warning = string.Empty;
+
+        await UpdateConfigButtonAsync(TryGetSelectedItem(out var selected) ? selected : null);
     }
 
     protected override async Task OnStateChangeAsync(ComboBox comboBox, IFeature<PowerModeState> feature, PowerModeState? newValue, PowerModeState? oldValue)
     {
-        await base.OnStateChangeAsync(comboBox, feature, newValue, oldValue);
+        await UpdateConfigButtonAsync(newValue);
 
-        if (newValue is null)
+        if (newValue is null || oldValue is null || newValue.Value == oldValue.Value)
+            return;
+
+        await base.OnStateChangeAsync(comboBox, feature, newValue, oldValue);
+    }
+
+    private async Task UpdateConfigButtonAsync(PowerModeState? state)
+    {
+        if (state is null)
         {
+            _configButton.Visibility = Visibility.Collapsed;
             return;
         }
 
@@ -110,7 +121,7 @@ public class PowerModeControl : AbstractComboBoxFeatureCardControl<PowerModeStat
 
         bool isAdapterConnected = adapterStatus != PowerAdapterStatus.Disconnected;
 
-        bool shouldShowButton = newValue switch
+        bool shouldShowButton = state switch
         {
             PowerModeState.Balance when mi.Properties.SupportsAIMode => true,
             PowerModeState.GodMode when mi.Properties.SupportsGodMode => true,

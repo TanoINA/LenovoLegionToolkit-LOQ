@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,20 +7,28 @@ namespace LenovoLegionToolkit.Lib.Utils;
 public class ThrottleLastDispatcher(TimeSpan interval, string? tag = null)
 {
     private CancellationTokenSource? _cancellationTokenSource;
+    private readonly object _sync = new();
 
     public async Task DispatchAsync(Func<Task> task)
     {
+        CancellationTokenSource cts;
+        lock (_sync)
+        {
+            try
+            {
+                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
+            }
+            catch (ObjectDisposedException) { }
+
+            _cancellationTokenSource = new CancellationTokenSource();
+            cts = _cancellationTokenSource;
+        }
+
         try
         {
-            if (_cancellationTokenSource is not null)
-                await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
-
-            _cancellationTokenSource = new();
-
-            var token = _cancellationTokenSource.Token;
-
-            await Task.Delay(interval, token).ConfigureAwait(false);
-            token.ThrowIfCancellationRequested();
+            await Task.Delay(interval, cts.Token).ConfigureAwait(false);
+            cts.Token.ThrowIfCancellationRequested();
 
             if (tag is not null)
                 Log.Instance.Trace($"Allowing... [tag={tag}]");
@@ -36,14 +44,17 @@ public class ThrottleLastDispatcher(TimeSpan interval, string? tag = null)
 
     public async Task DispatchImmediateAsync(Func<Task> task)
     {
-        try
+        lock (_sync)
         {
-            if (_cancellationTokenSource is not null)
+            try
             {
-                await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+                _cancellationTokenSource?.Cancel();
+                _cancellationTokenSource?.Dispose();
             }
+            catch (ObjectDisposedException) { }
+
+            _cancellationTokenSource = null;
         }
-        catch (OperationCanceledException) { }
 
         if (tag is not null)
             Log.Instance.Trace($"Immediate dispatch... [tag={tag}]");

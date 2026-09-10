@@ -21,7 +21,7 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
 {
     public static readonly Guid DefaultPowerPlan = Guid.Parse("381b4222-f694-41f0-9685-ff5bb260df2e");
 
-    private readonly ThrottleLastDispatcher _overlayDispatcher = new(TimeSpan.FromSeconds(2), nameof(WindowsPowerPlanController));
+    private readonly ThrottleLastDispatcher _overlayDispatcher = new(TimeSpan.FromMilliseconds(400), nameof(WindowsPowerPlanController));
     private readonly SemaphoreSlim _lock = new(1, 1);
 
     public IEnumerable<WindowsPowerPlan> GetPowerPlans()
@@ -36,42 +36,43 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
 
     public async Task SetPowerPlanAsync(PowerModeState powerModeState, bool alwaysActivateDefaults = false, GodModeSettingsStore.Preset? preset = null, bool skipThrottle = false)
     {
+        if (settings.Store.PowerModeMappingMode is not PowerModeMappingMode.WindowsPowerPlan)
+        {
+            Log.Instance.Trace($"Ignoring... [powerModeMappingMode={settings.Store.PowerModeMappingMode}]");
+            return;
+        }
+
+        Log.Instance.Trace($"Activating... [powerModeState={powerModeState}, alwaysActivateDefaults={alwaysActivateDefaults}]");
+
+        var activeGodModePreset = preset ?? (powerModeState == PowerModeState.GodMode ? await GetActiveGodModePresetAsync().ConfigureAwait(false) : null);
+
+        if (preset is null && powerModeState == PowerModeState.GodMode && activeGodModePreset is not null)
+            Log.Instance.Trace($"Resolving power plan from active GodMode preset. [preset={activeGodModePreset.Name}]");
+
+        var powerPlanId = activeGodModePreset?.Overrides.TryGetGuid(PowerOverrideKey.PowerPlan) ?? settings.Store.PowerPlans.GetValueOrDefault(powerModeState);
+
+        var isDefault = false;
+
+        if (powerPlanId == Guid.Empty)
+        {
+            Log.Instance.Trace($"Power plan for power mode {powerModeState} was not found in settings");
+
+            powerPlanId = DefaultPowerPlan;
+            isDefault = true;
+        }
+
+        Log.Instance.Trace($"Power plan to be activated is {powerPlanId} [isDefault={isDefault}]");
+
+        if (!await ShouldSetPowerPlanAsync(alwaysActivateDefaults, isDefault).ConfigureAwait(false))
+        {
+            Log.Instance.Trace($"Power plan {powerPlanId} will not be activated [isDefault={isDefault}]");
+            return;
+        }
+
+        Guid activeGuid;
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (settings.Store.PowerModeMappingMode is not PowerModeMappingMode.WindowsPowerPlan)
-            {
-                Log.Instance.Trace($"Ignoring... [powerModeMappingMode={settings.Store.PowerModeMappingMode}]");
-                return;
-            }
-
-            Log.Instance.Trace($"Activating... [powerModeState={powerModeState}, alwaysActivateDefaults={alwaysActivateDefaults}]");
-
-            var activeGodModePreset = preset ?? (powerModeState == PowerModeState.GodMode ? await GetActiveGodModePresetAsync().ConfigureAwait(false) : null);
-
-            if (preset is null && powerModeState == PowerModeState.GodMode && activeGodModePreset is not null)
-                Log.Instance.Trace($"Resolving power plan from active GodMode preset. [preset={activeGodModePreset.Name}]");
-
-            var powerPlanId = activeGodModePreset?.Overrides.TryGetGuid(PowerOverrideKey.PowerPlan) ?? settings.Store.PowerPlans.GetValueOrDefault(powerModeState);
-
-            var isDefault = false;
-
-            if (powerPlanId == Guid.Empty)
-            {
-                Log.Instance.Trace($"Power plan for power mode {powerModeState} was not found in settings");
-
-                powerPlanId = DefaultPowerPlan;
-                isDefault = true;
-            }
-
-            Log.Instance.Trace($"Power plan to be activated is {powerPlanId} [isDefault={isDefault}]");
-
-            if (!await ShouldSetPowerPlanAsync(alwaysActivateDefaults, isDefault).ConfigureAwait(false))
-            {
-                Log.Instance.Trace($"Power plan {powerPlanId} will not be activated [isDefault={isDefault}]");
-                return;
-            }
-
             var powerPlans = GetPowerPlans().ToArray();
 
             Log.Instance.Trace($"Available power plans:");
@@ -88,28 +89,29 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
             if (powerPlanToActivate.IsActive)
             {
                 Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} is already active. [name={powerPlanToActivate.Name}]");
-
-                await ApplyBalanceOverlayIfNeededAsync(powerPlanToActivate.Guid, powerModeState, isDefault, activeGodModePreset, skipThrottle).ConfigureAwait(false);
-                return;
+                activeGuid = powerPlanToActivate.Guid;
             }
-
-            try
+            else
             {
-                SetActivePowerPlan(powerPlanToActivate.Guid);
-                Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} activated. [name={powerPlanToActivate.Name}]");
+                try
+                {
+                    SetActivePowerPlan(powerPlanToActivate.Guid);
+                    Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} activated. [name={powerPlanToActivate.Name}]");
+                    activeGuid = powerPlanToActivate.Guid;
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"Failed to set active power plan. [guid={powerPlanToActivate.Guid}]", ex);
+                    return;
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Instance.Trace($"Failed to set active power plan. [guid={powerPlanToActivate.Guid}]", ex);
-                return;
-            }
-
-            await ApplyBalanceOverlayIfNeededAsync(powerPlanToActivate.Guid, powerModeState, isDefault, activeGodModePreset).ConfigureAwait(false);
         }
         finally
         {
             _lock.Release();
         }
+
+        await ApplyBalanceOverlayIfNeededAsync(activeGuid, powerModeState, isDefault, activeGodModePreset, skipThrottle).ConfigureAwait(false);
     }
 
     private async Task ApplyBalanceOverlayIfNeededAsync(Guid activePowerPlanGuid, PowerModeState powerModeState, bool isDefault, GodModeSettingsStore.Preset? preset = null, bool skipThrottle = false)
@@ -147,6 +149,14 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
         var adapterStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
         var isAc = adapterStatus != PowerAdapterStatus.Disconnected;
 
+        // LOQ AC Power Guard for Balance overlay
+        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
+        if (mi.LegionSeries == LegionSeries.LOQ && isAc && acMode == WindowsPowerMode.BestPowerEfficiency)
+        {
+            Log.Instance.Trace($"LOQ on AC: BestPowerEfficiency balance overlay is rejected by EC firmware. Falling back to Balanced.");
+            acMode = WindowsPowerMode.Balanced;
+        }
+
         var activeMode = isAc ? acMode : dcMode;
         var guidToApply = WindowsPowerModeController.GuidForWindowsPowerMode(activeMode);
 
@@ -165,37 +175,38 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
 
     public async Task SetPowerPlanAsync(ITSMode itsMode, bool alwaysActivateDefaults = false, bool skipThrottle = false)
     {
+        if (settings.Store.PowerModeMappingMode is not PowerModeMappingMode.WindowsPowerPlan)
+        {
+            Log.Instance.Trace($"Ignoring... [powerModeMappingMode={settings.Store.PowerModeMappingMode}]");
+            return;
+        }
+
+        Log.Instance.Trace($"Activating... [itsMode={itsMode}, alwaysActivateDefaults={alwaysActivateDefaults}]");
+
+        var powerPlanId = settings.Store.ITSPowerPlans.GetValueOrDefault(itsMode);
+
+        var isDefault = false;
+
+        if (powerPlanId == Guid.Empty)
+        {
+            Log.Instance.Trace($"Power plan for ITS mode {itsMode} was not found in settings");
+
+            powerPlanId = DefaultPowerPlan;
+            isDefault = true;
+        }
+
+        Log.Instance.Trace($"Power plan to be activated is {powerPlanId} [isDefault={isDefault}]");
+
+        if (!await ShouldSetPowerPlanAsync(alwaysActivateDefaults, isDefault).ConfigureAwait(false))
+        {
+            Log.Instance.Trace($"Power plan {powerPlanId} will not be activated [isDefault={isDefault}]");
+            return;
+        }
+
+        Guid activeGuid;
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (settings.Store.PowerModeMappingMode is not PowerModeMappingMode.WindowsPowerPlan)
-            {
-                Log.Instance.Trace($"Ignoring... [powerModeMappingMode={settings.Store.PowerModeMappingMode}]");
-                return;
-            }
-
-            Log.Instance.Trace($"Activating... [itsMode={itsMode}, alwaysActivateDefaults={alwaysActivateDefaults}]");
-
-            var powerPlanId = settings.Store.ITSPowerPlans.GetValueOrDefault(itsMode);
-
-            var isDefault = false;
-
-            if (powerPlanId == Guid.Empty)
-            {
-                Log.Instance.Trace($"Power plan for ITS mode {itsMode} was not found in settings");
-
-                powerPlanId = DefaultPowerPlan;
-                isDefault = true;
-            }
-
-            Log.Instance.Trace($"Power plan to be activated is {powerPlanId} [isDefault={isDefault}]");
-
-            if (!await ShouldSetPowerPlanAsync(alwaysActivateDefaults, isDefault).ConfigureAwait(false))
-            {
-                Log.Instance.Trace($"Power plan {powerPlanId} will not be activated [isDefault={isDefault}]");
-                return;
-            }
-
             var powerPlans = GetPowerPlans().ToArray();
 
             Log.Instance.Trace($"Available power plans:");
@@ -212,41 +223,42 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
             if (powerPlanToActivate.IsActive)
             {
                 Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} is already active. [name={powerPlanToActivate.Name}]");
-
-                await ApplyBalanceOverlayIfNeededAsync(powerPlanToActivate.Guid, itsMode, isDefault, skipThrottle).ConfigureAwait(false);
-                return;
+                activeGuid = powerPlanToActivate.Guid;
             }
-
-            try
+            else
             {
-                SetActivePowerPlan(powerPlanToActivate.Guid);
-                Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} activated. [name={powerPlanToActivate.Name}]");
+                try
+                {
+                    SetActivePowerPlan(powerPlanToActivate.Guid);
+                    Log.Instance.Trace($"Power plan {powerPlanToActivate.Guid} activated. [name={powerPlanToActivate.Name}]");
+                    activeGuid = powerPlanToActivate.Guid;
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"Failed to set active power plan. [guid={powerPlanToActivate.Guid}]", ex);
+                    return;
+                }
             }
-            catch (Exception ex)
-            {
-                Log.Instance.Trace($"Failed to set active power plan. [guid={powerPlanToActivate.Guid}]", ex);
-                return;
-            }
-
-            await ApplyBalanceOverlayIfNeededAsync(powerPlanToActivate.Guid, itsMode, isDefault).ConfigureAwait(false);
         }
         finally
         {
             _lock.Release();
         }
+
+        await ApplyBalanceOverlayIfNeededAsync(activeGuid, itsMode, isDefault, skipThrottle).ConfigureAwait(false);
     }
 
     public async Task SetBalancedPowerPlanAsync(bool skipThrottle = false)
     {
+        if (Power.IsBatterySaverEnabled())
+        {
+            Log.Instance.Trace($"Battery saver is on - will not set overlay scheme.");
+            return;
+        }
+
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            if (Power.IsBatterySaverEnabled())
-            {
-                Log.Instance.Trace($"Battery saver is on - will not set overlay scheme.");
-                return;
-            }
-
             try
             {
                 SetActivePowerPlan(DefaultPowerPlan);
@@ -257,24 +269,24 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
                 Log.Instance.Trace($"Failed to set balanced power plan. [guid={DefaultPowerPlan}]", ex);
                 return;
             }
-
-            var balancedGuid = Guid.Empty;
-
-            if (skipThrottle)
-            {
-                await _overlayDispatcher.DispatchImmediateAsync(() => ExecuteBalanceOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
-            }
-            else
-            {
-                await _overlayDispatcher.DispatchAsync(() => ExecuteBalanceOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
-            }
-
-            Log.Instance.Trace($"Balanced power plan set.");
         }
         finally
         {
             _lock.Release();
         }
+
+        var balancedGuid = Guid.Empty;
+
+        if (skipThrottle)
+        {
+            await _overlayDispatcher.DispatchImmediateAsync(() => ExecuteBalanceOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
+        }
+        else
+        {
+            await _overlayDispatcher.DispatchAsync(() => ExecuteBalanceOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
+        }
+
+        Log.Instance.Trace($"Balanced power plan set.");
     }
 
     private async Task ApplyBalanceOverlayIfNeededAsync(Guid activePowerPlanGuid, ITSMode itsMode, bool isDefault, bool skipThrottle = false)
