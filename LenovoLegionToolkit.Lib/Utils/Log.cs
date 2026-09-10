@@ -71,7 +71,7 @@ public class Log
     {
         lock (_lock)
         {
-            Folders.EnsureFolderExist(path);
+            Folders.EnsureParentDirectoryExists(path);
             var lines = new List<string>
             {
                 $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] [Thread Id: {Environment.CurrentManagedThreadId}] [{Path.GetFileName(file)}#{lineNumber}:{caller}] {message}"

@@ -19,8 +19,6 @@ public static class Folders
         }
     }
 
-    [Obsolete("Use EnsureParentDirectoryExists instead")]
-    public static void EnsureFolderExist(string filePath) => EnsureParentDirectoryExists(filePath);
 
     public static string Program => AppDomain.CurrentDomain.SetupInformation.ApplicationBase ?? string.Empty;
 
