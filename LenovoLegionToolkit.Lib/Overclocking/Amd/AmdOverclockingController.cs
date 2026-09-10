@@ -154,9 +154,22 @@ public sealed class AmdOverclockingController : IDisposable
 
     public void SaveShutdownInfo(ShutdownInfo info)
     {
+        var isAmd = _machineInformation?.Properties.IsAmdDevice
+            ?? Compatibility.GetMachineInformationAsync().Result.Properties.IsAmdDevice;
+
+        if (!isAmd && !AppFlags.Instance.Debug)
+        {
+            return;
+        }
+
+        if (!IsActive() && !AppFlags.Instance.Debug && !File.Exists(_statusFilePath))
+        {
+            return;
+        }
+
         try
         {
-            Folders.EnsureFolderExist(_statusFilePath);
+            Folders.EnsureParentDirectoryExists(_statusFilePath);
             File.WriteAllText(_statusFilePath, JsonSerializer.Serialize(info));
         }
         catch (Exception ex)
@@ -228,7 +241,7 @@ public sealed class AmdOverclockingController : IDisposable
         try
         {
             var options = new JsonSerializerOptions { WriteIndented = true };
-            Folders.EnsureFolderExist(_defaultProfilePath);
+            Folders.EnsureParentDirectoryExists(_defaultProfilePath);
             File.WriteAllText(_defaultProfilePath, JsonSerializer.Serialize(profile, options));
             Log.Instance.Trace($"Default profile saved.");
         }

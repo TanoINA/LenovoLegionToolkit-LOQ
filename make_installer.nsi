@@ -4,11 +4,11 @@
 ; -------------------------------------------------------------------------
 
 !ifndef VERSION
-  !define VERSION "2.35.4.6"
+  !define VERSION "2.36.0.0"
 !endif
 
 !ifndef NUMERIC_VERSION
-  !define NUMERIC_VERSION "2.35.4.6"
+  !define NUMERIC_VERSION "2.36.0.0"
 !endif
 
 !ifndef BUILD_DATE

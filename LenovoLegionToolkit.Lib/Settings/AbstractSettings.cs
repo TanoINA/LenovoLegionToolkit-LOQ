@@ -37,9 +37,16 @@ public abstract class AbstractSettings<T> where T : class, new()
 
     public void Save()
     {
-        var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
-        Folders.EnsureFolderExist(_settingsStorePath);
-        File.WriteAllText(_settingsStorePath, settingsSerialized);
+        try
+        {
+            var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+            Folders.EnsureParentDirectoryExists(_settingsStorePath);
+            File.WriteAllText(_settingsStorePath, settingsSerialized);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Unable to save {_fileName}", ex);
+        }
     }
 
     public void EnsureFileExists()
@@ -78,9 +85,16 @@ public abstract class AbstractSettings<T> where T : class, new()
 
     public void SynchronizeStore()
     {
-        var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
-        Folders.EnsureFolderExist(_settingsStorePath);
-        File.WriteAllText(_settingsStorePath, settingsSerialized);
+        try
+        {
+            var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+            Folders.EnsureParentDirectoryExists(_settingsStorePath);
+            File.WriteAllText(_settingsStorePath, settingsSerialized);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Unable to synchronize {_fileName}", ex);
+        }
     }
 
     private void TryBackup()
@@ -92,7 +106,7 @@ public abstract class AbstractSettings<T> where T : class, new()
 
             var backupFileName = $"{Path.GetFileNameWithoutExtension(_fileName)}_backup_{DateTime.UtcNow:yyyyMMddHHmmss}{Path.GetExtension(_fileName)}";
             var backupFilePath = Path.Combine(Folders.AppData, backupFileName);
-            Folders.EnsureFolderExist(backupFilePath);
+            Folders.EnsureParentDirectoryExists(backupFilePath);
             File.Copy(_settingsStorePath, backupFilePath);
         }
         catch (Exception ex)

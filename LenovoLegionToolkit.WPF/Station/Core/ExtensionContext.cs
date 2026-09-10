@@ -123,7 +123,7 @@ public sealed class ExtensionContext : IExtensionContext
         try
         {
             var settingsFile = GetSettingsFilePath();
-            Folders.EnsureFolderExist(settingsFile);
+            Folders.EnsureParentDirectoryExists(settingsFile);
 
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
             await File.WriteAllTextAsync(settingsFile, json).ConfigureAwait(false);

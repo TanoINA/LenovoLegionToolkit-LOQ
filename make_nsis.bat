@@ -1,7 +1,7 @@
 @echo off
 SET PATH=D:\dotnet9;%USERPROFILE%\.dotnet;%PATH%;"%LOCALAPPDATA%\Programs\NSIS";"C:\Program Files (x86)\NSIS";"C:\Program Files\NSIS"
 
-SET VERSION=2.35.4.6-loq
+SET VERSION=2.36.0.0-loq
 IF NOT "%1"=="" IF /I NOT "%1"=="raw" SET VERSION=%1
 
 for /f "tokens=1 delims=-" %%a in ("%VERSION%") do set NUMERIC_VERSION=%%a
