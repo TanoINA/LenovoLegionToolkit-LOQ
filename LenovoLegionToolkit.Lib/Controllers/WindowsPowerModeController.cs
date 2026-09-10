@@ -83,21 +83,6 @@ public partial class WindowsPowerModeController(ApplicationSettings settings, IM
         }
 
         var adapterStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
-
-        // LOQ AC Power Guard:
-        // Lenovo LOQ firmware EC (BIOS R3CN44WW etc.) strictly rejects BestPowerEfficiency when AC power is connected,
-        // immediately reverting the laptop back to Balance within 260ms-790ms.
-        // Fallback AC overlay to Balanced (Guid.Empty) on LOQ while preserving thermal Quiet mode (Blue LED).
-        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
-        if (mi.LegionSeries == LegionSeries.LOQ && adapterStatus != PowerAdapterStatus.Disconnected)
-        {
-            if (acGuid == BestPowerEfficiency)
-            {
-                Log.Instance.Trace($"LOQ on AC: BestPowerEfficiency overlay is rejected by EC firmware. Falling back AC overlay to Balanced.");
-                acGuid = Guid.Empty;
-            }
-        }
-
         var activeGuid = adapterStatus != PowerAdapterStatus.Disconnected ? acGuid : dcGuid;
 
         if (skipThrottle)
