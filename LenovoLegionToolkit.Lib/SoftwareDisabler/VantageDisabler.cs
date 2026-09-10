@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 
 namespace LenovoLegionToolkit.Lib.SoftwareDisabler;
 
@@ -23,7 +23,12 @@ public class VantageDisabler : AbstractSoftwareDisabler
 
     protected override IEnumerable<string> ProcessNames =>
     [
+        "BatteryWidgetHost",
+        "BGHelper",
+        "Lenovo.Modern.ImController",
+        "Lenovo.Vantage",
         "LenovoVantage",
-        "Lenovo.Modern.ImController"
+        "QSHelper",
+        "ScheduleEventAction"
     ];
 }

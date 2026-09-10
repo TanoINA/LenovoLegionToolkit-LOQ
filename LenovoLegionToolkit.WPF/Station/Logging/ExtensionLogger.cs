@@ -41,8 +41,20 @@ public sealed class ExtensionLogger : IExtensionLogger
         {
             try
             {
-                Folders.EnsureFolderExist(_logPath);
+                Folders.EnsureParentDirectoryExists(_logPath);
                 File.AppendAllText(_logPath, $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] {message}\n");
+            }
+            catch (DirectoryNotFoundException)
+            {
+                try
+                {
+                    Folders.EnsureParentDirectoryExists(_logPath);
+                    File.AppendAllText(_logPath, $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] {message}\n");
+                }
+                catch
+                {
+                    Log.Instance.Trace($"[Extension.{_pluginId}] {message}");
+                }
             }
             catch
             {
@@ -55,11 +67,23 @@ public sealed class ExtensionLogger : IExtensionLogger
     {
         lock (_lock)
         {
+            var formatted = $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] ERROR: {message}\n{exception}";
             try
             {
-                Folders.EnsureFolderExist(_logPath);
-                var formatted = $"[{DateTime.Now:dd/MM/yyyy HH:mm:ss.fff}] ERROR: {message}\n{exception}";
+                Folders.EnsureParentDirectoryExists(_logPath);
                 File.AppendAllText(_logPath, formatted + "\n");
+            }
+            catch (DirectoryNotFoundException)
+            {
+                try
+                {
+                    Folders.EnsureParentDirectoryExists(_logPath);
+                    File.AppendAllText(_logPath, formatted + "\n");
+                }
+                catch
+                {
+                    Log.Instance.ErrorReport($"[Extension.{_pluginId}] {message}", exception);
+                }
             }
             catch
             {

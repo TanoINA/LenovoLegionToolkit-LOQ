@@ -158,7 +158,7 @@ public static class LocalizationHelper
 
     private static Task SaveLanguageToFileAsync(CultureInfo cultureInfo)
     {
-        Folders.EnsureFolderExist(LanguagePath);
+        Folders.EnsureParentDirectoryExists(LanguagePath);
         return File.WriteAllTextAsync(LanguagePath, cultureInfo.Name);
     }
 
