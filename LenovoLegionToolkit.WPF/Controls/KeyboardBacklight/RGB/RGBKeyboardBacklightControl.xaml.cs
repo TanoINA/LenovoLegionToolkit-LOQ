@@ -41,12 +41,13 @@ public partial class RGBKeyboardBacklightControl
     {
         InitializeComponent();
 
-        _listener.Changed += Listener_Changed;
-
-
         SizeChanged += RGBKeyboardBacklightControl_SizeChanged;
-        Unloaded += RGBKeyboardBacklightControl_Unloaded;
 
+    }
+
+    protected override void OnFinishedLoading()
+    {
+        _listener.Changed += Listener_Changed;
         MessagingCenter.Subscribe<RGBKeyboardBacklightChangedMessage>(this, () => Dispatcher.InvokeTask(async () =>
         {
             if (!IsVisible)
@@ -58,9 +59,10 @@ public partial class RGBKeyboardBacklightControl
 
     }
 
-    private void RGBKeyboardBacklightControl_Unloaded(object sender, RoutedEventArgs e)
+    protected override void OnFinishedUnloading()
     {
-
+        _listener.Changed -= Listener_Changed;
+        MessagingCenter.Unsubscribe(this);
     }
 
 
@@ -288,8 +290,6 @@ public partial class RGBKeyboardBacklightControl
 
         UpdateApplyButtonState();
     }
-
-    protected override void OnFinishedLoading() { }
 
     private async Task SaveState()
     {

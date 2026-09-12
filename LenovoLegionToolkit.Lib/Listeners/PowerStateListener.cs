@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
 using Windows.Win32;
 using Windows.Win32.Foundation;
 using Windows.Win32.System.Power;
@@ -38,6 +39,10 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
     private readonly RGBKeyboardBacklightController _rgbController;
 
     private readonly SemaphoreSlim _processingLock = new(1, 1);
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly object _callbackTasksLock = new();
+    private readonly HashSet<Task> _callbackTasks = [];
+    private long _powerGeneration;
 
     private bool _started;
     private bool _disposed;
@@ -108,7 +113,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
 
             if (powerStateEvent is PowerStateEvent.Unknown) return;
 
-            await ProcessPowerEventAsync(powerStateEvent).ConfigureAwait(false);
+            await TrackCallbackAsync(ProcessPowerEventAsync(powerStateEvent)).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -124,7 +129,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
 
     private void TriggerNativeCallback(uint type)
     {
-        _ = Task.Run(async () =>
+        var task = Task.Run(async () =>
         {
             try
             {
@@ -135,6 +140,22 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                 Log.Instance.Trace($"Error in Native Power Callback: {ex}");
             }
         });
+        TrackCallback(task);
+    }
+
+    private Task TrackCallbackAsync(Task task)
+    {
+        TrackCallback(task);
+        return task;
+    }
+
+    private void TrackCallback(Task task)
+    {
+        lock (_callbackTasksLock) _callbackTasks.Add(task);
+        _ = task.ContinueWith(t =>
+        {
+            lock (_callbackTasksLock) _callbackTasks.Remove(t);
+        }, TaskScheduler.Default);
     }
 
     private async Task CallbackAsync(uint type)
@@ -165,6 +186,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
 
     private async Task ProcessPowerEventAsync(PowerStateEvent powerStateEvent)
     {
+        var generation = Interlocked.Increment(ref _powerGeneration);
         if (!await _processingLock.WaitAsync(TimeSpan.FromSeconds(5)).ConfigureAwait(false))
             return;
 
@@ -182,13 +204,13 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                     break;
 
                 case PowerStateEvent.Resume:
-                    await HandleResumeInternalAsync(powerAdapterState).ConfigureAwait(false);
+                    await HandleResumeInternalAsync(powerAdapterState, generation).ConfigureAwait(false);
                     break;
 
                 case PowerStateEvent.StatusChange:
                     if (powerAdapterStateChanged)
                     {
-                        await HandlePowerAdapterStatusChangeAsync().ConfigureAwait(false);
+                        await HandlePowerAdapterStatusChangeAsync(generation).ConfigureAwait(false);
                     }
 
                     break;
@@ -223,7 +245,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         }
     }
 
-    private async Task HandleResumeInternalAsync(PowerAdapterStatus currentAdapterStatus)
+    private async Task HandleResumeInternalAsync(PowerAdapterStatus currentAdapterStatus, long generation)
     {
         if (await _batteryFeature.IsSupportedAsync().ConfigureAwait(false))
         {
@@ -272,7 +294,8 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(2), _lifetimeCts.Token).ConfigureAwait(false);
+                if (generation != Volatile.Read(ref _powerGeneration)) return;
                 var refreshRateFeature = IoCContainer.Resolve<RefreshRateFeature>();
                 if (await refreshRateFeature.IsSupportedAsync().ConfigureAwait(false))
                 {
@@ -285,12 +308,13 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             }
         });
 
-        _ = NotifyDgpuAsync();
+        _ = NotifyDgpuAsync(generation);
     }
 
-    private async Task HandlePowerAdapterStatusChangeAsync()
+    private async Task HandlePowerAdapterStatusChangeAsync(long generation)
     {
-        await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
+        await Task.Delay(TimeSpan.FromSeconds(1), _lifetimeCts.Token).ConfigureAwait(false);
+        if (generation != Volatile.Read(ref _powerGeneration)) return;
 
         if (await _powerModeFeature.IsSupportedAsync().ConfigureAwait(false))
         {
@@ -301,7 +325,8 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         {
             try
             {
-                await Task.Delay(TimeSpan.FromSeconds(2)).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(2), _lifetimeCts.Token).ConfigureAwait(false);
+                if (generation != Volatile.Read(ref _powerGeneration)) return;
                 var refreshRateFeature = IoCContainer.Resolve<RefreshRateFeature>();
                 if (await refreshRateFeature.IsSupportedAsync().ConfigureAwait(false))
                 {
@@ -314,13 +339,13 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             }
         });
 
-        _ = NotifyDgpuAsync();
+        _ = NotifyDgpuAsync(generation);
     }
 
     private static bool HasExtensionProvider(string capability) =>
         IoCContainer.TryResolve<IExtensionManager>()?.HasProvider(capability) ?? false;
 
-    private async Task NotifyDgpuAsync()
+    private async Task NotifyDgpuAsync(long generation)
     {
         var now = DateTime.Now;
         if ((now - _lastNotifyTime).TotalSeconds < 10)
@@ -349,7 +374,8 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         {
             if (await _dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
             {
-                await Task.Delay(TimeSpan.FromSeconds(5)).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromSeconds(5), _lifetimeCts.Token).ConfigureAwait(false);
+                if (generation != Volatile.Read(ref _powerGeneration)) return;
                 await _dgpuNotify.NotifyAsync().ConfigureAwait(false);
             }
         }
@@ -428,10 +454,16 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
     {
         if (_disposed) return;
 
+        _disposed = true;
+        _lifetimeCts.Cancel();
         StopAsync().GetAwaiter().GetResult();
+        Task[] callbacks;
+        lock (_callbackTasksLock) callbacks = [.. _callbackTasks];
+        Task.WhenAll(callbacks).GetAwaiter().GetResult();
         _processingLock.Dispose();
+        _notifyLock.Dispose();
+        _lifetimeCts.Dispose();
         _recipientHandle?.Dispose();
 
-        _disposed = true;
     }
 }

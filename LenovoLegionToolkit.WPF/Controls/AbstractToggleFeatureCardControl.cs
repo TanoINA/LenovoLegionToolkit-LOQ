@@ -104,6 +104,11 @@ public abstract class AbstractToggleFeatureCardControl<T> : AbstractRefreshingCo
         }));
     }
 
+    protected override void OnFinishedUnloading()
+    {
+        MessagingCenter.Unsubscribe(this);
+    }
+
     protected virtual async Task OnStateChange(ToggleSwitch toggle, IFeature<T> feature)
     {
         var exceptionOccurred = false;

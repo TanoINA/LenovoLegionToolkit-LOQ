@@ -19,6 +19,7 @@ public abstract class AbstractRefreshingControl : UserControl
         IsEnabled = false;
 
         Loaded += RefreshingControl_Loaded;
+        Unloaded += RefreshingControl_Unloaded;
         IsVisibleChanged += RefreshingControl_IsVisibleChanged;
     }
 
@@ -27,7 +28,14 @@ public abstract class AbstractRefreshingControl : UserControl
         OnFinishedLoading();
     }
 
+    private void RefreshingControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        OnFinishedUnloading();
+    }
+
     protected abstract void OnFinishedLoading();
+
+    protected virtual void OnFinishedUnloading() { }
 
     private async void RefreshingControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {

@@ -23,8 +23,11 @@ public class HDRControl : AbstractToggleFeatureCardControl<HDRState>
         Title = Resource.HDRControl_Title;
         Subtitle = Resource.HDRControl_Message;
 
-        _listener.Changed += Listener_Changed;
     }
+
+    protected override void OnFinishedLoading() => _listener.Changed += Listener_Changed;
+
+    protected override void OnFinishedUnloading() => _listener.Changed -= Listener_Changed;
 
     protected override async Task OnRefreshAsync()
     {

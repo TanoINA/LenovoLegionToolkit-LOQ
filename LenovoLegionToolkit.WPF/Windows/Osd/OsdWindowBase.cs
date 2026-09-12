@@ -66,6 +66,7 @@ public abstract class OsdWindowBase : Window
     private long _lastFpsUiUpdateTick;
 
     private CancellationTokenSource? _cts;
+    private Task? _sensorLoopTask;
     private IDisposable? _sensorSubscription;
     protected bool _positionSet;
     private bool _fpsMonitoringStarted;
@@ -333,14 +334,13 @@ public abstract class OsdWindowBase : Window
 
     private async void OnVisibilityChanged(object? sender, DependencyPropertyChangedEventArgs e)
     {
+        await StopSensorLoopAsync();
         if (IsVisible)
         {
             _sensorsGroupControllers.ShowAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
             _sensorsGroupControllers.CpuVoltageMode = _hardwareSensorSettings.Store.CpuVoltageMode;
             _sensorsGroupControllers.CpuVoltageCoreIndex = _hardwareSensorSettings.Store.CpuVoltageCoreIndex;
 
-            _cts?.Cancel();
-            _cts?.Dispose();
             _cts = new CancellationTokenSource();
 
             CheckAndUpdateFpsMonitoring();
@@ -348,14 +348,27 @@ public abstract class OsdWindowBase : Window
 
             StartHardwareSensorUpdates();
 
-            await TheRing(_cts.Token);
+            _sensorLoopTask = TheRing(_cts.Token);
+            await _sensorLoopTask;
         }
         else
         {
-            _cts?.Cancel();
             _sensorSubscription?.Dispose();
             CheckAndUpdateFpsMonitoring();
         }
+    }
+
+    private async Task StopSensorLoopAsync()
+    {
+        _cts?.Cancel();
+        var task = _sensorLoopTask;
+        if (task is not null)
+        {
+            try { await task; } catch (OperationCanceledException) { }
+        }
+        _sensorLoopTask = null;
+        _cts?.Dispose();
+        _cts = null;
     }
 
     private void StartHardwareSensorUpdates()
@@ -380,8 +393,7 @@ public abstract class OsdWindowBase : Window
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _sessionListener.Changed -= OnSessionLockStateChanged;
 
-        _cts?.Cancel();
-        _cts?.Dispose();
+        StopSensorLoopAsync().GetAwaiter().GetResult();
         _refreshLock.Dispose();
 
         _fpsController.FpsDataUpdated -= OnFpsDataUpdated;

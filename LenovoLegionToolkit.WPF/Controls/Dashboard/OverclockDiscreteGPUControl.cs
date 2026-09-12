@@ -55,8 +55,6 @@ public class OverclockDiscreteGPUControl : AbstractRefreshingControl
     {
         InitializeComponent();
 
-        _nativeWindowsMessageListener.Changed += NativeWindowsMessageListener_Changed;
-        _controller.Changed += Controller_Changed;
     }
 
     private void InitializeComponent()
@@ -77,7 +75,17 @@ public class OverclockDiscreteGPUControl : AbstractRefreshingControl
         Content = _cardControl;
     }
 
-    protected override void OnFinishedLoading() { }
+    protected override void OnFinishedLoading()
+    {
+        _nativeWindowsMessageListener.Changed += NativeWindowsMessageListener_Changed;
+        _controller.Changed += Controller_Changed;
+    }
+
+    protected override void OnFinishedUnloading()
+    {
+        _nativeWindowsMessageListener.Changed -= NativeWindowsMessageListener_Changed;
+        _controller.Changed -= Controller_Changed;
+    }
 
     protected override async Task OnRefreshAsync()
     {
