@@ -42,8 +42,23 @@ public class PowerModeControl : AbstractComboBoxFeatureCardControl<PowerModeStat
 
         AutomationProperties.SetName(_configButton, Resource.PowerModeControl_Title);
 
+        Loaded += PowerModeControl_Loaded;
+        Unloaded += PowerModeControl_Unloaded;
+    }
+
+    private void PowerModeControl_Loaded(object sender, RoutedEventArgs e)
+    {
+        _thermalModeListener.Changed -= ThermalModeListener_Changed;
+        _powerModeListener.Changed -= PowerModeListener_Changed;
+
         _thermalModeListener.Changed += ThermalModeListener_Changed;
         _powerModeListener.Changed += PowerModeListener_Changed;
+    }
+
+    private void PowerModeControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _thermalModeListener.Changed -= ThermalModeListener_Changed;
+        _powerModeListener.Changed -= PowerModeListener_Changed;
     }
 
     private async void ThermalModeListener_Changed(object? sender, ThermalModeListener.ChangedEventArgs e)

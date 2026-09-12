@@ -73,40 +73,33 @@ public class PowerModeFeature(
         if (mi.Properties.HasQuietToPerformanceModeSwitchingBug && currentState == PowerModeState.Quiet && state == PowerModeState.Performance)
         {
             Log.Instance.Trace($"Workaround: Quiet->Performance bug, routing via Balance");
-            thermalModeListener.SuppressNext();
-            powerModeListener.SuppressNext();
+            thermalModeListener.SuppressNext(ThermalModeState.Balance);
+            powerModeListener.SuppressNext(PowerModeState.Balance);
             await base.SetStateAsync(PowerModeState.Balance).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
 
         if (mi.Properties.HasGodModeToOtherModeSwitchingBug && currentState == PowerModeState.GodMode && state != PowerModeState.GodMode)
         {
-            Log.Instance.Trace($"Workaround: GodMode->other bug, routing via {state} intermediate");
-            thermalModeListener.SuppressNext();
-            powerModeListener.SuppressNext();
-
-            switch (state)
+            Log.Instance.Trace($"Workaround: GodMode->other bug, routing via intermediate");
+            var intermediate = state switch
             {
-                case PowerModeState.Quiet:
-                    await base.SetStateAsync(PowerModeState.Performance).ConfigureAwait(false);
-                    break;
-                case PowerModeState.Balance:
-                    await base.SetStateAsync(PowerModeState.Quiet).ConfigureAwait(false);
-                    break;
-                case PowerModeState.Performance:
-                    await base.SetStateAsync(PowerModeState.Balance).ConfigureAwait(false);
-                    break;
-                case PowerModeState.Extreme:
-                    await base.SetStateAsync(PowerModeState.Extreme).ConfigureAwait(false);
-                    break;
-            }
+                PowerModeState.Quiet => PowerModeState.Performance,
+                PowerModeState.Balance => PowerModeState.Quiet,
+                PowerModeState.Performance => PowerModeState.Balance,
+                PowerModeState.Extreme => PowerModeState.Extreme,
+                _ => state
+            };
 
+            thermalModeListener.SuppressNext(ToThermalModeState(intermediate));
+            powerModeListener.SuppressNext(intermediate);
+            await base.SetStateAsync(intermediate).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
 
         var sw = Stopwatch.StartNew();
-        thermalModeListener.SuppressNext();
-        powerModeListener.SuppressNext();
+        thermalModeListener.SuppressNext(ToThermalModeState(state));
+        powerModeListener.SuppressNext(state);
         Log.Instance.Trace($"Calling SetSmartFanModeAsync({(int)(object)state + 1})...");
         await base.SetStateAsync(state).ConfigureAwait(false);
         Log.Instance.Trace($"SetSmartFanModeAsync completed [elapsed={sw.ElapsedMilliseconds}ms]");
@@ -144,4 +137,14 @@ public class PowerModeFeature(
 
         await godModeController.ApplyStateAsync().ConfigureAwait(false);
     }
+
+    private static ThermalModeState ToThermalModeState(PowerModeState state) => state switch
+    {
+        PowerModeState.Quiet => ThermalModeState.Quiet,
+        PowerModeState.Balance => ThermalModeState.Balance,
+        PowerModeState.Performance => ThermalModeState.Performance,
+        PowerModeState.Extreme => ThermalModeState.Extreme,
+        PowerModeState.GodMode => ThermalModeState.GodMode,
+        _ => ThermalModeState.Unknown
+    };
 }

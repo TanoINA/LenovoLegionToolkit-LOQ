@@ -82,16 +82,13 @@ public partial class WindowsPowerModeController(ApplicationSettings settings, IM
             return;
         }
 
-        var adapterStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
-        var activeGuid = adapterStatus != PowerAdapterStatus.Disconnected ? acGuid : dcGuid;
-
         if (skipThrottle)
         {
-            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(activeGuid, acGuid, dcGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(acGuid, dcGuid)).ConfigureAwait(false);
         }
         else
         {
-            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(activeGuid, acGuid, dcGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(acGuid, dcGuid)).ConfigureAwait(false);
         }
 
         Log.Instance.Trace($"Power mode activated... [powerModeState={powerModeState}, acGuid={acGuid}, dcGuid={dcGuid}]");
@@ -132,27 +129,13 @@ public partial class WindowsPowerModeController(ApplicationSettings settings, IM
             return;
         }
 
-        var adapterStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
-
-        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
-        if (mi.LegionSeries == LegionSeries.LOQ && adapterStatus != PowerAdapterStatus.Disconnected)
-        {
-            if (acGuid == BestPowerEfficiency)
-            {
-                Log.Instance.Trace($"LOQ on AC: BestPowerEfficiency overlay is rejected by EC firmware. Falling back AC overlay to Balanced.");
-                acGuid = Guid.Empty;
-            }
-        }
-
-        var activeGuid = adapterStatus != PowerAdapterStatus.Disconnected ? acGuid : dcGuid;
-
         if (skipThrottle)
         {
-            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(activeGuid, acGuid, dcGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(acGuid, dcGuid)).ConfigureAwait(false);
         }
         else
         {
-            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(activeGuid, acGuid, dcGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(acGuid, dcGuid)).ConfigureAwait(false);
         }
 
         Log.Instance.Trace($"Power mode activated... [itsMode={itsMode}, acGuid={acGuid}, dcGuid={dcGuid}]");
@@ -176,22 +159,25 @@ public partial class WindowsPowerModeController(ApplicationSettings settings, IM
 
         if (skipThrottle)
         {
-            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchImmediateAsync(() => ExecuteOverlayDispatch(balancedGuid, balancedGuid)).ConfigureAwait(false);
         }
         else
         {
-            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(balancedGuid, balancedGuid, balancedGuid)).ConfigureAwait(false);
+            await _dispatcher.DispatchAsync(() => ExecuteOverlayDispatch(balancedGuid, balancedGuid)).ConfigureAwait(false);
         }
 
         Log.Instance.Trace($"Balanced power mode set.");
     }
 
-    private async Task ExecuteOverlayDispatch(Guid activeGuid, Guid acGuid, Guid dcGuid)
+    private async Task ExecuteOverlayDispatch(Guid acGuid, Guid dcGuid)
     {
         if (!IsOverlaySupported)
         {
             return;
         }
+
+        var adapterStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
+        var activeGuid = adapterStatus == PowerAdapterStatus.Disconnected ? dcGuid : acGuid;
 
         await _lock.WaitAsync().ConfigureAwait(false);
         try
