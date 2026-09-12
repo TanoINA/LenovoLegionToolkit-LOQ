@@ -1,40 +1,39 @@
-# Lenovo Legion Toolkit (LOQ 15IRX10 Custom Build)
+# Lenovo Legion Toolkit (LOQ Edition)
 
-This repository is a personal fork of [LenovoLegionToolkit-Team/LenovoLegionToolkit](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit), maintained for personal use on a Lenovo LOQ 15IRX10 (Intel Core i5-13450HX, NVIDIA GeForce RTX 5050 Laptop GPU).
+A custom build of the excellent [Lenovo Legion Toolkit](https://github.com/BartoszCichecki/LenovoLegionToolkit) tailored specifically for Lenovo LOQ series laptops (tested primarily on the LOQ 15IRX10 with i5-13450HX and RTX 5050).
 
-## Disclaimer
+This project tracks official upstream releases by Bartosz Cichecki while incorporating platform-specific timing adjustments for LOQ hardware.
 
-This fork is intended strictly for personal use and experimentation. It is not affiliated with, endorsed by, or supported by Lenovo or the upstream Lenovo Legion Toolkit maintainers. No warranty or support is provided. If you choose to run or build this fork, you do so entirely at your own risk.
+## About this Build
 
-For official and widely tested releases, please visit the upstream repository:
-https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit
+Lenovo Legion Toolkit is originally crafted for the Legion ecosystem. While upstream provides broad compatibility, certain newer LOQ motherboards and BIOS revisions feature distinct EC firmware timings and ACPI event behaviors.
 
-## Changes in this Fork
+This build introduces specific hardware-level refinements for these devices:
+- **Power Mode Timing**: Refined WMI listener debouncing and dispatcher synchronization to ensure smooth, stable Fn+Q mode transitions on AC power.
+- **Windows Power Mode on AC**: Quiet mode cleanly stays on *Best Power Efficiency* on AC power without reverting.
+- **Display Mode Handshake**: Added a wake pulse to ensure NVIDIA Dynamic Display Mode (Advanced Optimus) tray icons reliably appear after system resume.
+- **Background Worker Resilience**: Added extra safety boundaries across automation handlers and stabilized background sensor polling loops.
+- **Full Upstream Parity**: Fully synced with upstream v2.36.0.0, retaining all official features, software disablers, and Crowdin translations.
+- **NSIS Installer**: Packaged into a standalone Windows setup installer.
 
-This build is based on upstream `dev` branch commits and adds specific adjustments for the LOQ 15IRX10 platform:
+## Upstream Project
 
-- Advanced Optimus tray icon fix: Added an automatic dGPU pulse kick during AC startup/wake to resolve missing NVIDIA Dynamic Display Mode tray icon.
-- Refresh rate persistence: Fixed display refresh rate automatically reverting to 144Hz across reboots, sleep/wake cycles, and AC adapter connection/disconnection.
-- Custom Mode stability: Handled unsupported FanFullSpeed WMI capabilities and fan table write timeouts on LOQ motherboards, preventing presets from dropping back to Performance mode.
-- Power adapter state handling: Synchronized power profile enforcement and refresh rate verification when transitioning between AC and battery power.
-- NSIS installer: Replaced the installer pipeline with an NSIS script that configures desktop and start menu shortcuts, removes orphaned legacy uninstaller registry entries, and manages elevation for unsigned local binaries.
+All credit for the application architecture, features, and continuous development goes to **Bartosz Cichecki** and the [LenovoLegionToolkit](https://github.com/BartoszCichecki/LenovoLegionToolkit) community. If you are using a standard Legion laptop, we strongly recommend using the [official releases](https://github.com/BartoszCichecki/LenovoLegionToolkit/releases).
 
 ## Requirements
 
-- Windows 10 or Windows 11 (64-bit)
+- Windows 10 or 11 (64-bit)
 - Microsoft .NET Desktop Runtime 9.0 (x64)
 - Compatible Lenovo LOQ or Legion laptop
 
 ## Building from Source
 
-To build the binaries and package the NSIS installer:
+```cmd
+# Requires .NET 9 SDK and NSIS
+make_nsis.bat
+```
+The installer executable will be generated in `build_installer/`.
 
-1. Ensure .NET 9 SDK and NSIS are installed and available on PATH.
-2. Run `make_nsis.bat` from the root of the repository.
-3. The installer executable will be generated in the `build_installer` directory.
+## License
 
-## Credits
-
-- Original creator: Bartosz Cichecki
-- Maintainers: LenovoLegionToolkit-Team
-- License: GNU General Public License v3.0 (see LICENSE)
+Licensed under the **GNU General Public License v3.0** (same as upstream).
