@@ -257,77 +257,77 @@ public class AutomationProcessor(
 
     private async void DisplayConfigurationListener_Changed(object? sender, DisplayConfigurationListener.ChangedEventArgs args)
     {
-        var e = new HDRAutomationEvent(args.HDR);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new HDRAutomationEvent(args.HDR), nameof(DisplayConfigurationListener_Changed)).ConfigureAwait(false);
     }
 
     private async void NativeWindowsMessageListener_Changed(object? sender, NativeWindowsMessageListener.ChangedEventArgs args)
     {
-        var e = new NativeWindowsMessageEvent(args.Message, args.Data);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new NativeWindowsMessageEvent(args.Message, args.Data), nameof(NativeWindowsMessageListener_Changed)).ConfigureAwait(false);
     }
 
     private async void PowerStateListener_Changed(object? sender, PowerStateListener.ChangedEventArgs args)
     {
-        var e = new PowerStateAutomationEvent(args.PowerStateEvent, args.PowerAdapterStateChanged);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new PowerStateAutomationEvent(args.PowerStateEvent, args.PowerAdapterStateChanged), nameof(PowerStateListener_Changed)).ConfigureAwait(false);
     }
 
     private async void PowerModeListener_Changed(object? sender, PowerModeListener.ChangedEventArgs args)
     {
-        var e = new PowerModeAutomationEvent(args.State);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new PowerModeAutomationEvent(args.State), nameof(PowerModeListener_Changed)).ConfigureAwait(false);
     }
 
     private async void GodModeController_PresetChanged(object? sender, Guid presetId)
     {
-        var e = new CustomModePresetAutomationEvent(presetId);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new CustomModePresetAutomationEvent(presetId), nameof(GodModeController_PresetChanged)).ConfigureAwait(false);
     }
 
     private async void GameAutoListener_Changed(object? sender, GameAutoListener.ChangedEventArgs args)
     {
-        var e = new GameAutomationEvent(args.Running);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new GameAutomationEvent(args.Running), nameof(GameAutoListener_Changed)).ConfigureAwait(false);
     }
 
     private async void ProcessAutoListener_Changed(object? sender, ProcessAutoListener.ChangedEventArgs args)
     {
-        var e = new ProcessAutomationEvent(args.Type, args.ProcessInfo);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new ProcessAutomationEvent(args.Type, args.ProcessInfo), nameof(ProcessAutoListener_Changed)).ConfigureAwait(false);
     }
 
     private async void SessionLockUnlockListener_Changed(object? sender, SessionLockUnlockListener.ChangedEventArgs args)
     {
-        var e = new SessionLockUnlockAutomationEvent(args.Locked);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new SessionLockUnlockAutomationEvent(args.Locked), nameof(SessionLockUnlockListener_Changed)).ConfigureAwait(false);
     }
 
     private async void TimeAutoListener_Changed(object? sender, TimeAutoListener.ChangedEventArgs args)
     {
-        var e = new TimeAutomationEvent(args.Time, args.Day);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new TimeAutomationEvent(args.Time, args.Day), nameof(TimeAutoListener_Changed)).ConfigureAwait(false);
     }
 
     private async void UserInactivityAutoListener_Changed(object? sender, UserInactivityAutoListener.ChangedEventArgs args)
     {
-        var e = new UserInactivityAutomationEvent(args.TimerResolution * args.TickCount);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new UserInactivityAutomationEvent(args.TimerResolution * args.TickCount), nameof(UserInactivityAutoListener_Changed)).ConfigureAwait(false);
     }
 
     private async void WiFiAutoListener_Changed(object? sender, WiFiAutoListener.ChangedEventArgs args)
     {
-        var e = new WiFiAutomationEvent(args.IsConnected, args.Ssid);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new WiFiAutomationEvent(args.IsConnected, args.Ssid), nameof(WiFiAutoListener_Changed)).ConfigureAwait(false);
     }
 
     private async void BatteryAutoListener_Changed(object? sender, BatteryAutoListener.ChangedEventArgs args)
     {
-        var e = new BatteryPercentageAutomationEvent(args.Percentage);
-        await ProcessEvent(e).ConfigureAwait(false);
+        await ProcessEventSafelyAsync(new BatteryPercentageAutomationEvent(args.Percentage), nameof(BatteryAutoListener_Changed)).ConfigureAwait(false);
     }
 
     #endregion
+
+    private async Task ProcessEventSafelyAsync(IAutomationEvent automationEvent, string source)
+    {
+        try
+        {
+            await ProcessEvent(automationEvent).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Automation event handler failed. [source={source}]", ex);
+        }
+    }
 
     #region Event processing
 
@@ -346,37 +346,37 @@ public class AutomationProcessor(
             return;
         }
 
-        try
+        while (true)
         {
-            // Drain pending events in a loop so that bursts collapse into a single
-            // serialized sequence of runs, each acting on the freshest event seen.
-            IAutomationEvent? current;
-            while ((current = Interlocked.Exchange(ref _pendingEvent, null)) is not null)
+            try
             {
-                try
+                IAutomationEvent? current;
+                while ((current = Interlocked.Exchange(ref _pendingEvent, null)) is not null)
                 {
-                    var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
-                            .Select(async t => await t.IsMatchingEvent(current).ConfigureAwait(false)))
-                        .ConfigureAwait(false);
-
-                    if (!triggerMatches.Any(t => t))
+                    try
                     {
-                        continue;
+                        var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
+                                .Select(async t => await t.IsMatchingEvent(current).ConfigureAwait(false)))
+                            .ConfigureAwait(false);
+
+                        if (!triggerMatches.Any(t => t)) continue;
+
+                        Log.Instance.Trace($"Processing event {current}... [type={current.GetType().Name}]");
+                        await RunAsync(current).ConfigureAwait(false);
                     }
-
-                    Log.Instance.Trace($"Processing event {current}... [type={current.GetType().Name}]");
-
-                    await RunAsync(current).ConfigureAwait(false);
-                }
-                catch (Exception ex)
-                {
-                    Log.Instance.Trace($"Failed to process event {current?.GetType().Name}.", ex);
+                    catch (Exception ex)
+                    {
+                        Log.Instance.Trace($"Failed to process event {current?.GetType().Name}.", ex);
+                    }
                 }
             }
-        }
-        finally
-        {
-            Interlocked.Exchange(ref _eventProcessingActive, 0);
+            finally
+            {
+                Interlocked.Exchange(ref _eventProcessingActive, 0);
+            }
+
+            if (Volatile.Read(ref _pendingEvent) is null) return;
+            if (Interlocked.CompareExchange(ref _eventProcessingActive, 1, 0) != 0) return;
         }
     }
 

@@ -618,8 +618,8 @@ public class SensorsGroupController : IDisposable
         lock (_subscribers)
         {
             _subscribers[subscriber] = new SensorSubscription(interval, scope);
-            UpdateProducerLoop();
         }
+        UpdateProducerLoop();
     }
 
     public void Stop(object subscriber)
@@ -628,9 +628,11 @@ public class SensorsGroupController : IDisposable
         {
             if (_subscribers.Remove(subscriber))
             {
-                UpdateProducerLoop();
+                // Restart outside the subscriber lock so the old producer can
+                // finish its final subscriber-state check without deadlocking.
             }
         }
+        UpdateProducerLoop();
     }
 
     private void UpdateProducerLoop()
@@ -650,10 +652,30 @@ public class SensorsGroupController : IDisposable
 
     private void StopProducerLoop()
     {
-        _producerCts?.Cancel();
-        _producerCts?.Dispose();
+        var cts = _producerCts;
+        var task = _producerTask;
         _producerCts = null;
         _producerTask = null;
+
+        cts?.Cancel();
+        if (task is not null)
+        {
+            _ = ObserveProducerTaskAsync(task);
+        }
+        cts?.Dispose();
+    }
+
+    private static async Task ObserveProducerTaskAsync(Task task)
+    {
+        try
+        {
+            await task.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Sensor producer loop failed during shutdown.", ex);
+        }
     }
 
     private async Task ProducerLoop(CancellationToken token)

@@ -26,6 +26,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
     private bool _isActive;
     private int _isPulsing;
     private CancellationTokenSource? _pulseCts;
+    private Task? _initializationTask;
+    private Task? _pulseTask;
     private DateTime _lastAdapterChangeHandled = DateTime.MinValue;
     private static readonly TimeSpan AdapterChangeDebounce = TimeSpan.FromMilliseconds(500);
 
@@ -45,7 +47,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
         _powerStateListener.Changed += PowerStateListener_Changed;
 
-        _ = Task.Run(async () =>
+        _initializationTask = Task.Run(async () =>
         {
             try
             {
@@ -154,7 +156,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
         try
         {
-            await Task.Run(async () =>
+            var pulseTask = Task.Run(async () =>
             {
                 Log.Instance.Trace($"Pulsing dGPU awake for {duration.TotalSeconds}s...");
                 ID3D11Device? device = null;
@@ -229,7 +231,9 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                     }
                     Log.Instance.Trace($"dGPU pulse awake completed.");
                 }
-            }, cts.Token).ConfigureAwait(false);
+            }, cts.Token);
+            _pulseTask = pulseTask;
+            await pulseTask.ConfigureAwait(false);
         }
         catch (OperationCanceledException) { }
         finally
@@ -363,6 +367,9 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         CancelPulse();
         _powerStateListener.Changed -= PowerStateListener_Changed;
 
+        await ObserveTaskAsync(_initializationTask).ConfigureAwait(false);
+        await ObserveTaskAsync(_pulseTask).ConfigureAwait(false);
+
         await StopInternalAsync().ConfigureAwait(false);
         _lock.Dispose();
     }
@@ -375,7 +382,17 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         CancelPulse();
         _powerStateListener.Changed -= PowerStateListener_Changed;
 
+        ObserveTaskAsync(_initializationTask).GetAwaiter().GetResult();
+        ObserveTaskAsync(_pulseTask).GetAwaiter().GetResult();
         StopInternalAsync().GetAwaiter().GetResult();
         _lock.Dispose();
+    }
+
+    private static async Task ObserveTaskAsync(Task? task)
+    {
+        if (task is null) return;
+        try { await task.ConfigureAwait(false); }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Instance.Trace($"dGPU awake lifecycle task failed.", ex); }
     }
 }

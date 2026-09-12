@@ -37,7 +37,7 @@ public static class Registry
                 using var baseKey = GetBaseKey(hive);
                 using var key = baseKey.OpenSubKey(subKey) ?? throw new InvalidOperationException($"Key {subKey} could not be opened");
 
-                var resetEvent = new ManualResetEvent(false);
+                using var resetEvent = new ManualResetEvent(false);
 
                 while (true)
                 {
@@ -80,7 +80,14 @@ public static class Registry
         {
             Log.Instance.Trace($"Event arrived [classPath={e.NewEvent.ClassPath}, hive={hive}, pathFormatted={pathFormatted}, key={valueName}]");
 
-            handler();
+            try
+            {
+                handler();
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Registry value observer callback failed.", ex);
+            }
         };
         watcher.Start();
 
