@@ -24,13 +24,20 @@ public partial class DiscreteGPUControl
     {
         InitializeComponent();
 
-        _gpuController.Refreshed += GpuController_Refreshed;
-        _nativeWindowsMessageListener.Changed += NativeWindowsMessageListener_Changed;
-
         IsVisibleChanged += DiscreteGPUControl_IsVisibleChanged;
     }
 
-    protected override void OnFinishedLoading() { }
+    protected override void OnFinishedLoading()
+    {
+        _gpuController.Refreshed += GpuController_Refreshed;
+        _nativeWindowsMessageListener.Changed += NativeWindowsMessageListener_Changed;
+    }
+
+    protected override void OnFinishedUnloading()
+    {
+        _gpuController.Refreshed -= GpuController_Refreshed;
+        _nativeWindowsMessageListener.Changed -= NativeWindowsMessageListener_Changed;
+    }
 
     protected override async Task OnRefreshAsync()
     {

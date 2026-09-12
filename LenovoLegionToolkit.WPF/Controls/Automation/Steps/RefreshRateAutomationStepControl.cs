@@ -18,8 +18,10 @@ public class RefreshRateAutomationStepControl : AbstractComboBoxAutomationStepCa
         Title = Resource.RefreshRateAutomationStepControl_Title;
         Subtitle = Resource.RefreshRateAutomationStepControl_Message;
 
-        _listener.Changed += Listener_Changed;
     }
+
+    protected override void OnFinishedLoading() => _listener.Changed += Listener_Changed;
+    protected override void OnFinishedUnloading() => _listener.Changed -= Listener_Changed;
 
     protected override string ComboBoxItemDisplayName(RefreshRate value)
     {

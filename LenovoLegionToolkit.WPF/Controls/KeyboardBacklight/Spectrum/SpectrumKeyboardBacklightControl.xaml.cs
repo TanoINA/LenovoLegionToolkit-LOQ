@@ -66,10 +66,12 @@ public partial class SpectrumKeyboardBacklightControl
         IsVisibleChanged += SpectrumKeyboardBacklightControl_IsVisibleChanged;
         SizeChanged += SpectrumKeyboardBacklightControl_SizeChanged;
 
-        _listener.Changed += Listener_Changed;
-
         Focusable = false;
+    }
 
+    protected override void OnFinishedLoading()
+    {
+        _listener.Changed += Listener_Changed;
         MessagingCenter.Subscribe<SpectrumBacklightChangedMessage>(this, () => Dispatcher.InvokeTask(async () =>
         {
             if (!IsVisible)
@@ -82,6 +84,12 @@ public partial class SpectrumKeyboardBacklightControl
 
 
 
+    }
+
+    protected override void OnFinishedUnloading()
+    {
+        _listener.Changed -= Listener_Changed;
+        MessagingCenter.Unsubscribe(this);
     }
 
     private async void SpectrumKeyboardBacklightControl_IsVisibleChanged(object sender,
@@ -393,10 +401,6 @@ public partial class SpectrumKeyboardBacklightControl
         {
             await StartAnimationAsync();
         }
-    }
-
-    protected override void OnFinishedLoading()
-    {
     }
 
     private void SelectButtons(SpectrumKeyboardBacklightEffect effect)

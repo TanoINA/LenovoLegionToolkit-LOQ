@@ -19,11 +19,13 @@ using Wpf.Ui.Controls;
 
 namespace LenovoLegionToolkit.WPF.Utils;
 
-public class NotificationsManager
+public class NotificationsManager : IDisposable
 {
     private static Dispatcher Dispatcher => Application.Current.Dispatcher;
 
     private readonly NotificationSettings _settings;
+    private readonly EventHandler _displaySettingsChangedHandler;
+    private bool _disposed;
 
     private List<INotificationWindow?> _windows = [];
 
@@ -31,9 +33,20 @@ public class NotificationsManager
     {
         _settings = settings;
 
-        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += (_, _) => ScreenHelper.UpdateScreenInfos();
+        _displaySettingsChangedHandler = (_, _) => ScreenHelper.UpdateScreenInfos();
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged += _displaySettingsChangedHandler;
 
         MessagingCenter.Subscribe<NotificationMessage>(this, OnNotificationReceived);
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        Microsoft.Win32.SystemEvents.DisplaySettingsChanged -= _displaySettingsChangedHandler;
+        MessagingCenter.Unsubscribe(this);
+        foreach (var window in _windows.OfType<Window>()) window.Close();
+        _windows.Clear();
     }
 
     private void OnNotificationReceived(NotificationMessage notification)

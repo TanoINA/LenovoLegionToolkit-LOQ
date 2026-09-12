@@ -101,6 +101,7 @@ public abstract class AbstractAutomationStepControl : UserControl
         InitializeComponent();
 
         Loaded += RefreshingControl_Loaded;
+        Unloaded += RefreshingControl_Unloaded;
     }
 
     private void InitializeComponent()
@@ -158,11 +159,15 @@ public abstract class AbstractAutomationStepControl : UserControl
         OnFinishedLoading();
     }
 
+    private void RefreshingControl_Unloaded(object sender, RoutedEventArgs e) => OnFinishedUnloading();
+
     public abstract IAutomationStep CreateAutomationStep();
 
     protected abstract UIElement? GetCustomControl();
 
     protected abstract void OnFinishedLoading();
+
+    protected virtual void OnFinishedUnloading() { }
 
     protected abstract Task RefreshAsync();
 

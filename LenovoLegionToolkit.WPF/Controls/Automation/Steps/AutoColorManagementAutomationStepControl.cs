@@ -17,8 +17,10 @@ public class AutoColorManagementAutomationStepControl : AbstractComboBoxAutomati
         Title = Resource.AutoColorManagementAutomationStepControl_Title;
         Subtitle = Resource.AutoColorManagementAutomationStepControl_Message;
 
-        _listener.Changed += Listener_Changed;
     }
+
+    protected override void OnFinishedLoading() => _listener.Changed += Listener_Changed;
+    protected override void OnFinishedUnloading() => _listener.Changed -= Listener_Changed;
 
     private void Listener_Changed(object? sender, EventArgs e) => Dispatcher.Invoke(async () =>
     {

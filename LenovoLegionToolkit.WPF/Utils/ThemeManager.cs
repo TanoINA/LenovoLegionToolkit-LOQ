@@ -12,12 +12,14 @@ using Accent = Wpf.Ui.Appearance.Accent;
 
 namespace LenovoLegionToolkit.WPF.Utils;
 
-public class ThemeManager
+public class ThemeManager : IDisposable
 {
     private static readonly RGBColor DefaultAccentColor = new(255, 33, 33);
 
     private readonly ApplicationSettings _settings;
     private readonly SystemThemeListener _listener;
+    private readonly EventHandler<EventArgs> _themeChangedHandler;
+    private bool _disposed;
 
     public event EventHandler? ThemeApplied;
 
@@ -26,7 +28,15 @@ public class ThemeManager
         _listener = systemThemeListener;
         _settings = settings;
 
-        _listener.Changed += (_, _) => Application.Current.Dispatcher.Invoke(Apply);
+        _themeChangedHandler = (_, _) => Application.Current.Dispatcher.Invoke(Apply);
+        _listener.Changed += _themeChangedHandler;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _listener.Changed -= _themeChangedHandler;
     }
 
     public void Apply()
