@@ -17,7 +17,37 @@ public class ThermalModeListener(
         public ThermalModeState State { get; } = state;
     }
 
-    private readonly ThreadSafeCounter _suppressCounter = new();
+    private readonly object _suppressionLock = new();
+    private ThermalModeState? _suppressedState;
+    private DateTime _suppressionExpiresUtc = DateTime.MinValue;
+
+    public void SuppressNext(ThermalModeState expectedState, TimeSpan lifetime)
+    {
+        lock (_suppressionLock)
+        {
+            _suppressedState = expectedState;
+            _suppressionExpiresUtc = DateTime.UtcNow + lifetime;
+            Log.Instance.Trace($"ThermalModeListener: Suppressing expected WMI event {expectedState} until {_suppressionExpiresUtc:HH:mm:ss.fff}");
+        }
+    }
+
+    public void SuppressNext(ThermalModeState expectedState) => SuppressNext(expectedState, TimeSpan.FromMilliseconds(1000));
+
+    public void SuppressNext() => SuppressNext(ThermalModeState.Balance, TimeSpan.FromMilliseconds(1000));
+
+    private bool ConsumeSuppression(ThermalModeState actualState)
+    {
+        lock (_suppressionLock)
+        {
+            if (_suppressedState == actualState && DateTime.UtcNow < _suppressionExpiresUtc)
+            {
+                _suppressedState = null;
+                _suppressionExpiresUtc = DateTime.MinValue;
+                return true;
+            }
+            return false;
+        }
+    }
 
     protected override ThermalModeState GetValue(int value)
     {
@@ -37,9 +67,9 @@ public class ThermalModeListener(
 
     protected override async Task OnChangedAsync(ThermalModeState state)
     {
-        if (!_suppressCounter.Decrement())
+        if (ConsumeSuppression(state))
         {
-            Log.Instance.Trace($"Suppressed.");
+            Log.Instance.Trace($"ThermalModeListener: Suppressed expected WMI event for {state}.");
             return;
         }
 
@@ -68,12 +98,5 @@ public class ThermalModeListener(
 
         await windowsPowerModeController.SetPowerModeAsync(powerModeState).ConfigureAwait(false);
         await windowsPowerPlanController.SetPowerPlanAsync(powerModeState).ConfigureAwait(false);
-    }
-
-    public void SuppressNext()
-    {
-        Log.Instance.Trace($"Suppressing next...");
-
-        _suppressCounter.Increment();
     }
 }

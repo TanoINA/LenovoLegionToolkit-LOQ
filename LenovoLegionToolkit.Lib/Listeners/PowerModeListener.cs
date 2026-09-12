@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Controllers;
 using LenovoLegionToolkit.Lib.Controllers.GodMode;
@@ -23,15 +24,42 @@ public class PowerModeListener(
         public PowerModeState State { get; } = state;
     }
 
-    private readonly ThreadSafeCounter _suppressCounter = new();
+    private readonly object _suppressionLock = new();
+    private PowerModeState? _suppressedState;
+    private DateTime _suppressionExpiresUtc = DateTime.MinValue;
     private readonly object _stateLock = new();
     private DateTime _lastProcessedTime = DateTime.MinValue;
     private PowerModeState? _lastProcessedValue;
 
-    public void SuppressNext()
+    private readonly object _overclockLock = new();
+    private CancellationTokenSource? _overclockCts;
+
+    public void SuppressNext(PowerModeState expectedState, TimeSpan lifetime)
     {
-        Log.Instance.Trace($"PowerModeListener: Suppressing next...");
-        _suppressCounter.Increment();
+        lock (_suppressionLock)
+        {
+            _suppressedState = expectedState;
+            _suppressionExpiresUtc = DateTime.UtcNow + lifetime;
+            Log.Instance.Trace($"PowerModeListener: Suppressing expected WMI event {expectedState} until {_suppressionExpiresUtc:HH:mm:ss.fff}");
+        }
+    }
+
+    public void SuppressNext(PowerModeState expectedState) => SuppressNext(expectedState, TimeSpan.FromMilliseconds(1000));
+
+    public void SuppressNext() => SuppressNext(PowerModeState.Balance, TimeSpan.FromMilliseconds(1000));
+
+    private bool ConsumeSuppression(PowerModeState actualState)
+    {
+        lock (_suppressionLock)
+        {
+            if (_suppressedState == actualState && DateTime.UtcNow < _suppressionExpiresUtc)
+            {
+                _suppressedState = null;
+                _suppressionExpiresUtc = DateTime.MinValue;
+                return true;
+            }
+            return false;
+        }
     }
 
     public bool IsRecentlyProcessed(PowerModeState value, TimeSpan window)
@@ -52,9 +80,9 @@ public class PowerModeListener(
 
     protected override async Task OnChangedAsync(PowerModeState value)
     {
-        if (!_suppressCounter.Decrement())
+        if (ConsumeSuppression(value))
         {
-            Log.Instance.Trace($"PowerModeListener: Suppressed WMI event for {value}.");
+            Log.Instance.Trace($"PowerModeListener: Suppressed expected WMI event for {value}.");
             return;
         }
 
@@ -136,11 +164,21 @@ public class PowerModeListener(
             if (await gpuOverclockController.IsSupportedAsync().ConfigureAwait(false))
             {
                 Log.Instance.Trace($"GPU overclock supported, scheduling re-apply after 1s");
-                _ = Task.Run(async () =>
+                CancellationToken token;
+                lock (_overclockLock)
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(1)).ConfigureAwait(false);
-                    await gpuOverclockController.EnsureOverclockIsAppliedAsync().ConfigureAwait(false);
-                });
+                    try
+                    {
+                        _overclockCts?.Cancel();
+                        _overclockCts?.Dispose();
+                    }
+                    catch (ObjectDisposedException) { }
+
+                    _overclockCts = new CancellationTokenSource();
+                    token = _overclockCts.Token;
+                }
+
+                _ = ReapplyOverclockAsync(gpuOverclockController, token);
             }
 
             var amdOverclockingController = IoCContainer.Resolve<AmdOverclockingController>();
@@ -155,6 +193,20 @@ public class PowerModeListener(
         finally
         {
             _dependenciesLock.Release();
+        }
+    }
+
+    private static async Task ReapplyOverclockAsync(GPUOverclockController controller, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await Task.Delay(TimeSpan.FromSeconds(1), cancellationToken).ConfigureAwait(false);
+            await controller.EnsureOverclockIsAppliedAsync().ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to reapply GPU overclock after power-mode change.", ex);
         }
     }
 

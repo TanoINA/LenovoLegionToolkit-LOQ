@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using LenovoLegionToolkit.Lib.Utils;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace LenovoLegionToolkit.Tests;
@@ -90,5 +91,68 @@ public class PowerModeConcurrencyTests
 
         Assert.AreEqual(postCrashTask, completed, "Subsequent call must acquire lock without deadlocking after a prior exception.");
         Assert.AreEqual(1, controller.CompletedTransitions);
+    }
+
+    [TestMethod]
+    public async Task ThrottleLastDispatcher_RapidDispatches_ExecutesOnlyTrailingTask()
+    {
+        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMilliseconds(50), "TestDispatcher");
+        var executionCount = 0;
+        var lastExecutedValue = -1;
+
+        var tasks = new List<Task>();
+        for (var i = 0; i < 50; i++)
+        {
+            var value = i;
+            tasks.Add(dispatcher.DispatchAsync(() =>
+            {
+                Interlocked.Increment(ref executionCount);
+                lastExecutedValue = value;
+                return Task.CompletedTask;
+            }));
+            await Task.Delay(2);
+        }
+
+        await Task.WhenAll(tasks);
+        await Task.Delay(100);
+
+        Assert.AreEqual(49, lastExecutedValue, "Only the last dispatched work must execute.");
+        Assert.IsTrue(executionCount <= 2, $"Execution count should be throttled (expected <= 2, got {executionCount})");
+    }
+
+    [TestMethod]
+    public async Task ThrottleLastDispatcher_CallbackException_IsNotSwallowed()
+    {
+        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMilliseconds(20), "TestDispatcher");
+
+        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () =>
+        {
+            await dispatcher.DispatchAsync(() => throw new InvalidOperationException("Callback failed"));
+        });
+    }
+
+    [TestMethod]
+    public async Task ThrottleLastDispatcher_ImmediateDispatch_OverridesPendingDelayed()
+    {
+        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMilliseconds(100), "TestDispatcher");
+        var executed = new List<string>();
+
+        _ = dispatcher.DispatchAsync(() =>
+        {
+            executed.Add("delayed");
+            return Task.CompletedTask;
+        });
+
+        await Task.Delay(10);
+
+        await dispatcher.DispatchImmediateAsync(() =>
+        {
+            executed.Add("immediate");
+            return Task.CompletedTask;
+        });
+
+        await Task.Delay(150);
+
+        CollectionAssert.AreEqual(new[] { "immediate" }, executed, "Immediate dispatch must supersede pending delayed dispatch.");
     }
 }
