@@ -20,10 +20,10 @@ if exist "build" rd /s /q "build"
 mkdir "build"
 
 echo Publishing assemblies with .NET 9...
-dotnet publish LenovoLegionToolkit.WPF -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
-dotnet publish LenovoLegionToolkit.SpectrumTester -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
-dotnet publish LenovoLegionToolkit.Probe -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
-dotnet publish LenovoLegionToolkit.CLI -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
+"D:\dotnet9\dotnet.exe" publish LenovoLegionToolkit.WPF -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
+"D:\dotnet9\dotnet.exe" publish LenovoLegionToolkit.SpectrumTester -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
+"D:\dotnet9\dotnet.exe" publish LenovoLegionToolkit.Probe -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
+"D:\dotnet9\dotnet.exe" publish LenovoLegionToolkit.CLI -c release -o build /p:DebugType=None /p:FileVersion=%NUMERIC_VERSION% /p:Version=%VERSION% || exit /b
 
 echo Packaging identity files...
 powershell -NoProfile -ExecutionPolicy Bypass -File ".\build_identity_package.ps1" -Version %VERSION% -OutputDir "build" -UseManifest || exit /b

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO.Pipes;
+using System.IO;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ namespace LenovoLegionToolkit.CLI.Lib.Extensions;
 
 public static class PipeStreamExtensions
 {
+    public const int MaximumMessageSize = 1024 * 1024;
     private static readonly Encoding Encoding = Encoding.UTF8;
 
     public static async Task WriteObjectAsync<T>(this PipeStream stream, T obj, CancellationToken token = default)
@@ -18,6 +20,8 @@ public static class PipeStreamExtensions
 
         var str = JsonConvert.SerializeObject(obj);
         var bytes = Encoding.GetBytes(str);
+        if (bytes.Length > MaximumMessageSize)
+            throw new InvalidDataException("IPC message exceeds the maximum size.");
         await stream.WriteAsync(bytes, token).ConfigureAwait(false);
     }
 
@@ -27,14 +31,18 @@ public static class PipeStreamExtensions
             throw new InvalidOperationException("ReadMode is not PipeTransmissionMode.Message");
 
         var buffer = new byte[1024];
-        var builder = new StringBuilder();
+        using var message = new MemoryStream();
 
         do
         {
-            _ = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
-            builder.Append(Encoding.GetString(buffer));
+            var bytesRead = await stream.ReadAsync(buffer, token).ConfigureAwait(false);
+            if (bytesRead == 0)
+                throw new EndOfStreamException("Pipe closed before a complete message was received.");
+            if (message.Length + bytesRead > MaximumMessageSize)
+                throw new InvalidDataException("IPC message exceeds the maximum size.");
+            message.Write(buffer, 0, bytesRead);
         } while (!stream.IsMessageComplete);
 
-        return JsonConvert.DeserializeObject<T>(builder.ToString());
+        return JsonConvert.DeserializeObject<T>(Encoding.GetString(message.GetBuffer(), 0, (int)message.Length));
     }
 }

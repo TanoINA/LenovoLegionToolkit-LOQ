@@ -33,6 +33,7 @@ public static class PInvokeExtensions
     {
         var lpInBuffer = IntPtr.Zero;
         var lpOutBuffer = IntPtr.Zero;
+        var handleAdded = false;
 
         try
         {
@@ -44,21 +45,27 @@ public static class PInvokeExtensions
 
             Marshal.StructureToPtr(inVal, lpInBuffer, false);
 
+            hDevice.DangerousAddRef(ref handleAdded);
+            uint bytesReturned = 0;
             var ret = PInvoke.DeviceIoControl(new HANDLE(hDevice.DangerousGetHandle()),
                 dwIoControlCode,
                 lpInBuffer.ToPointer(),
                 (uint)nInBufferSize,
                 lpOutBuffer.ToPointer(),
                 (uint)nOutBufferSize,
-                null,
+                &bytesReturned,
                 null);
 
+            if (ret && bytesReturned < nOutBufferSize)
+                throw new InvalidOperationException($"DeviceIoControl returned {bytesReturned} bytes; expected at least {nOutBufferSize}.");
             outVal = ret ? Marshal.PtrToStructure<TOut>(lpOutBuffer) : default;
 
             return ret;
         }
         finally
         {
+            if (handleAdded)
+                hDevice.DangerousRelease();
             Marshal.FreeHGlobal(lpInBuffer);
             Marshal.FreeHGlobal(lpOutBuffer);
         }

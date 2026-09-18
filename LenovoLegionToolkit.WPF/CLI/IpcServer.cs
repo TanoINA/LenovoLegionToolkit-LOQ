@@ -26,83 +26,109 @@ public class IpcServer(
     IntegrationsSettings settings
     )
 {
-    private CancellationTokenSource _cancellationTokenSource = new();
+    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
+    private static readonly TimeSpan TransportTimeout = TimeSpan.FromSeconds(10);
+    private CancellationTokenSource? _cancellationTokenSource;
     private Task _handler = Task.CompletedTask;
 
     public async Task StartStopIfNeededAsync()
     {
-        await StopAsync().ConfigureAwait(false);
-
-        if (!settings.Store.CLI)
-            return;
-
-        Log.Instance.Trace($"Starting...");
-
-        _cancellationTokenSource = new();
-
-        var token = _cancellationTokenSource.Token;
-        _handler = Task.Run(() => Handler(token), token);
-
-        Log.Instance.Trace($"Started");
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await StopCoreAsync().ConfigureAwait(false);
+            if (!settings.Store.CLI)
+                return;
+            _cancellationTokenSource = new();
+            var token = _cancellationTokenSource.Token;
+            _handler = Task.Run(() => Handler(token));
+        }
+        finally
+        {
+            _lifecycleLock.Release();
+        }
     }
 
     public async Task StopAsync()
     {
-        Log.Instance.Trace($"Stopping...");
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await StopCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycleLock.Release();
+        }
+    }
 
-        await _cancellationTokenSource.CancelAsync();
-        await _handler;
-
-        Log.Instance.Trace($"Stopped");
+    private async Task StopCoreAsync()
+    {
+        if (_cancellationTokenSource is null)
+            return;
+        await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+        await _handler.ConfigureAwait(false);
+        _cancellationTokenSource.Dispose();
+        _cancellationTokenSource = null;
+        _handler = Task.CompletedTask;
     }
 
     private async Task Handler(CancellationToken token)
     {
         try
         {
-            var identity = new SecurityIdentifier(WellKnownSidType.AuthenticatedUserSid, null);
+            using var windowsIdentity = WindowsIdentity.GetCurrent();
+            var identity = windowsIdentity.User ?? throw new InvalidOperationException("Current user SID is unavailable.");
             var security = new PipeSecurity();
+            security.SetAccessRuleProtection(true, false);
             security.AddAccessRule(new(identity, PipeAccessRights.ReadWrite, AccessControlType.Allow));
-
-            await using var pipe = NamedPipeServerStreamAcl.Create(LenovoLegionToolkit.CLI.Lib.Constants.PIPE_NAME,
-                PipeDirection.InOut,
-                1,
-                PipeTransmissionMode.Message,
-                PipeOptions.None,
-                0,
-                0,
-                security);
 
             while (!token.IsCancellationRequested)
             {
-                await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
+                await using var pipe = NamedPipeServerStreamAcl.Create(LenovoLegionToolkit.CLI.Lib.Constants.PIPE_NAME,
+                    PipeDirection.InOut,
+                    1,
+                    PipeTransmissionMode.Message,
+                    PipeOptions.Asynchronous,
+                    0,
+                    0,
+                    security);
 
-                Log.Instance.Trace($"Connection received.");
-
+                using var closeOnStop = token.Register(() => pipe.Dispose());
                 try
                 {
-                    var req = await pipe.ReadObjectAsync<IpcRequest>(token).ConfigureAwait(false);
+                    await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
+                    using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
+                    deadline.CancelAfter(TransportTimeout);
+                    var req = await pipe.ReadObjectAsync<IpcRequest>(deadline.Token).ConfigureAwait(false);
 
                     if (req?.Operation is null)
                         throw new IpcException("Failed to deserialize request");
 
-                    var res = await HandleRequest(req).ConfigureAwait(false);
-                    await pipe.WriteObjectAsync(res, token).ConfigureAwait(false);
+                    // Hardware/actions have their own lifetime; transport deadlines must not
+                    // abandon a mutation and permit overlapping requests.
+                    deadline.CancelAfter(Timeout.InfiniteTimeSpan);
+                    deadline.Token.ThrowIfCancellationRequested();
+                    IpcResponse res;
+                    try
+                    {
+                        res = await HandleRequest(req).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        res = new IpcResponse { Success = false, Message = ex.Message };
+                    }
+                    deadline.CancelAfter(TransportTimeout);
+                    await pipe.WriteObjectAsync(res, deadline.Token).ConfigureAwait(false);
                 }
-                catch (OperationCanceledException)
+                catch (Exception) when (token.IsCancellationRequested)
                 {
-                    throw;
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    var res = new IpcResponse { Success = false, Message = ex.Message };
-                    await pipe.WriteObjectAsync(res, token).ConfigureAwait(false);
-                }
-                finally
-                {
-                    Log.Instance.Trace($"Disconnecting...");
-
-                    pipe.Disconnect();
+                    // Never attempt a second write on a failed transport.
+                    Log.Instance.Trace($"IPC connection failed or timed out.", ex);
                 }
             }
         }
