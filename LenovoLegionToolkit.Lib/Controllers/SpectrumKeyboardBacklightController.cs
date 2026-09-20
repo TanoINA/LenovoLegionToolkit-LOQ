@@ -613,7 +613,7 @@ public class SpectrumKeyboardBacklightController
                     if (keyCode < 1)
                         continue;
 
-                    items.Add(new(keyCode, new((byte)avgR, (byte)avgB, (byte)avgG)));
+                    items.Add(new(keyCode, new((byte)avgR, (byte)avgG, (byte)avgB)));
                 }
 
                 token.ThrowIfCancellationRequested();

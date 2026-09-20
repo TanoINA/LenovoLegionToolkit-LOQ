@@ -12,6 +12,7 @@ public abstract class AbstractSettings<T> where T : class, new()
     private readonly string _settingsStorePath;
     private readonly string _fileName;
     private T? _store;
+    private readonly object _saveLock = new();
 
     protected virtual T Default => new();
 
@@ -37,15 +38,18 @@ public abstract class AbstractSettings<T> where T : class, new()
 
     public void Save()
     {
-        try
+        lock (_saveLock)
         {
-            var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
-            Folders.EnsureParentDirectoryExists(_settingsStorePath);
-            File.WriteAllText(_settingsStorePath, settingsSerialized);
-        }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"Unable to save {_fileName}", ex);
+            try
+            {
+                var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+                Folders.EnsureParentDirectoryExists(_settingsStorePath);
+                WriteAllTextAtomic(settingsSerialized);
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Unable to save {_fileName}", ex);
+            }
         }
     }
 
@@ -85,16 +89,26 @@ public abstract class AbstractSettings<T> where T : class, new()
 
     public void SynchronizeStore()
     {
-        try
+        lock (_saveLock)
         {
-            var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
-            Folders.EnsureParentDirectoryExists(_settingsStorePath);
-            File.WriteAllText(_settingsStorePath, settingsSerialized);
+            try
+            {
+                var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+                Folders.EnsureParentDirectoryExists(_settingsStorePath);
+                WriteAllTextAtomic(settingsSerialized);
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Unable to synchronize {_fileName}", ex);
+            }
         }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"Unable to synchronize {_fileName}", ex);
-        }
+    }
+
+    private void WriteAllTextAtomic(string contents)
+    {
+        var tempPath = _settingsStorePath + ".tmp";
+        File.WriteAllText(tempPath, contents);
+        File.Move(tempPath, _settingsStorePath, overwrite: true);
     }
 
     private void TryBackup()
