@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -32,13 +32,15 @@ public class FnKeysDisabler : AbstractSoftwareDisabler
 
         try
         {
-            var procs = Process.GetProcessesByName("utility");
-            foreach (var process in procs)
+            foreach (var process in Process.GetProcessesByName("utility"))
             {
                 try
                 {
                     var description = process.MainModule?.FileVersionInfo.FileDescription;
-                    if (description != null && description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
+                    if (description is null)
+                        continue;
+
+                    if (description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
                         result.Add(process.ProcessName);
                 }
                 catch { /* Ignore access denied or missing module */ }
@@ -61,15 +63,23 @@ public class FnKeysDisabler : AbstractSoftwareDisabler
         {
             foreach (var process in Process.GetProcessesByName("utility"))
             {
-                var description = process.MainModule?.FileVersionInfo.FileDescription;
-                if (description is null)
-                    continue;
+                try
+                {
+                    var description = process.MainModule?.FileVersionInfo.FileDescription;
+                    if (description is null)
+                        continue;
 
-                if (!description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
-                    continue;
+                    if (!description.Equals("Lenovo Hotkeys", StringComparison.InvariantCultureIgnoreCase))
+                        continue;
 
-                process.Kill();
-                await process.WaitForExitAsync().ConfigureAwait(false);
+                    process.Kill();
+                    await process.WaitForExitAsync().ConfigureAwait(false);
+                }
+                catch { /* Ignore access denied or already exited */ }
+                finally
+                {
+                    process.Dispose();
+                }
             }
         }
         catch {  /* Ignore */ }

@@ -377,22 +377,23 @@ public partial class MainWindow
         if (DisableConflictingSoftwareWarning)
             return;
 
-        _vantageDisabler.OnRefreshed += async (_, e) => await Dispatcher.InvokeAsync(() =>
+        // Fire-and-forget (no async void): an await on a dispatcher that is shutting down would throw unobserved.
+        _vantageDisabler.OnRefreshed += (_, e) => Dispatcher.InvokeAsync(() =>
         {
             _vantageIndicator.Visibility = e.Status == SoftwareStatus.Enabled ? Visibility.Visible : Visibility.Collapsed;
         });
 
-        _legionSpaceDisabler.OnRefreshed += async (_, e) => await Dispatcher.InvokeAsync(() =>
+        _legionSpaceDisabler.OnRefreshed += (_, e) => Dispatcher.InvokeAsync(() =>
         {
             _legionSpaceIndicator.Visibility = e.Status == SoftwareStatus.Enabled ? Visibility.Visible : Visibility.Collapsed;
         });
 
-        _legionZoneDisabler.OnRefreshed += async (_, e) => await Dispatcher.InvokeAsync(() =>
+        _legionZoneDisabler.OnRefreshed += (_, e) => Dispatcher.InvokeAsync(() =>
         {
             _legionZoneIndicator.Visibility = e.Status == SoftwareStatus.Enabled ? Visibility.Visible : Visibility.Collapsed;
         });
 
-        _fnKeysDisabler.OnRefreshed += async (_, e) => await Dispatcher.InvokeAsync(() =>
+        _fnKeysDisabler.OnRefreshed += (_, e) => Dispatcher.InvokeAsync(() =>
         {
             _fnKeysIndicator.Visibility = e.Status == SoftwareStatus.Enabled ? Visibility.Visible : Visibility.Collapsed;
         });

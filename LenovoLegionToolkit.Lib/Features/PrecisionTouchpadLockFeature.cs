@@ -1,4 +1,4 @@
-using LenovoLegionToolkit.Lib.System.Management;
+﻿using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
 using Microsoft.Win32;
 using System;

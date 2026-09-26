@@ -41,6 +41,10 @@ public class BatteryDischargeRateMonitorService
                 catch (Exception ex)
                 {
                     Log.Instance.Trace($"Battery monitoring service failed.", ex);
+
+                    // Back off so a persistent failure (e.g. no battery) does not busy-spin a core.
+                    try { await Task.Delay(TimeSpan.FromSeconds(3), token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { }
                 }
             }
 

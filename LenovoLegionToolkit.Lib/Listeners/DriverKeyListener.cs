@@ -199,10 +199,14 @@ public class DriverKeyListener(
 
     private static unsafe bool BindListener(WaitHandle waitHandle)
     {
-        var handle = (uint)waitHandle.SafeWaitHandle.DangerousGetHandle();
+        // Driver contract expects a 16-byte input with the handle in the low dword; zero-fill the rest
+        // instead of letting it read 12 bytes past a 4-byte stack local.
+        var buffer = stackalloc ulong[2];
+        buffer[0] = (uint)waitHandle.SafeWaitHandle.DangerousGetHandle();
+        buffer[1] = 0;
         return PInvoke.DeviceIoControl(new HANDLE(Drivers.GetEnergy().DangerousGetHandle()),
             Drivers.IOCTL_KEY_WAIT_HANDLE,
-            &handle,
+            buffer,
             16,
             null,
             0,

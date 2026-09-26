@@ -83,9 +83,14 @@ public static class Devices
         var requiredSize = 0u;
         PInvoke.SetupDiClassNameFromGuid(guid, [], out requiredSize);
 
+        if (requiredSize == 0)
+            return string.Empty;
+
         var chars = new char[requiredSize];
-        PInvoke.SetupDiClassNameFromGuid(guid, chars, out _);
-        return chars.ToString() ?? string.Empty;
+        if (!PInvoke.SetupDiClassNameFromGuid(guid, chars, out _))
+            return string.Empty;
+
+        return new string(chars).TrimEnd('\0');
     }
 
     private static unsafe string GetStringProperty(SetupDiDestroyDeviceInfoListSafeHandle deviceInfoSet, SP_DEVINFO_DATA deviceInfoData, DEVPROPKEY propertyKey)
@@ -358,8 +363,14 @@ public static class Devices
                 FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
                 null);
 
-            if (!PInvoke.HidD_GetAttributes(fileHandle, out var hidAttributes))
+            if (fileHandle.IsInvalid)
                 continue;
+
+            if (!PInvoke.HidD_GetAttributes(fileHandle, out var hidAttributes))
+            {
+                fileHandle.Dispose();
+                continue;
+            }
 
             PHIDP_PREPARSED_DATA preParsedData = default;
             try
@@ -373,10 +384,13 @@ public static class Devices
 
                     return fileHandle;
                 }
+
+                fileHandle.Dispose();
             }
             finally
             {
-                PInvoke.HidD_FreePreparsedData(preParsedData);
+                if (preParsedData != IntPtr.Zero)
+                    PInvoke.HidD_FreePreparsedData(preParsedData);
             }
         }
 

@@ -1,7 +1,7 @@
-using System.Threading.Tasks;
+﻿using System.Threading.Tasks;
+using Windows.Win32;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
-using Windows.Win32;
 
 namespace LenovoLegionToolkit.Lib.System;
 
@@ -12,50 +12,42 @@ public static class Power
     public static async Task<PowerAdapterStatus> IsPowerAdapterConnectedAsync()
     {
         if (!PInvoke.GetSystemPowerStatus(out var sps))
-        {
             return _lastReportedStatus;
-        }
 
-        // Win32 SYSTEM_POWER_STATUS: ACLineStatus: 0 = Offline, 1 = Online, 255 = Unknown.
-        // During power mode switches or power plan reloads, ACLineStatus can momentarily return 255.
+        // ACLineStatus: 0 = Offline, 1 = Online, 255 = Unknown (transient during power plan reloads).
         // Retain the last known status to prevent false Disconnected triggers.
         if (sps.ACLineStatus == 255)
-        {
             return _lastReportedStatus;
-        }
 
         var adapterConnected = sps.ACLineStatus == 1;
         if (!adapterConnected)
+            return _lastReportedStatus = PowerAdapterStatus.Disconnected;
+
+        // Non-Legion series (IdeaPad, LOQ, YOGA, ThinkBook, ...) lack GameZone charger reporting;
+        // querying it there yields spurious ConnectedLowWattage flips during CPU/GPU power shifts.
+        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
+        var acFitForOc = true;
+        var chargingNormally = true;
+        if (mi.LegionSeries <= LegionSeries.Legion_Legacy)
         {
-            _lastReportedStatus = PowerAdapterStatus.Disconnected;
-            return PowerAdapterStatus.Disconnected;
+            acFitForOc = await IsAcFitForOc().ConfigureAwait(false) ?? true;
+            chargingNormally = await IsChargingNormally().ConfigureAwait(false) ?? true;
         }
 
-        var mi = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
-        var useWindowsPowerStatus = mi.LegionSeries >= LegionSeries.Legion_Legacy;
-        // On unsupported models (LOQ, IdeaPad, etc.), low-wattage adapter detection is not supported in hardware.
-        // Using transient battery discharge rate causes spurious ConnectedLowWattage flips during CPU/GPU power shifts.
-        var chargingNormally = useWindowsPowerStatus ? true : await IsChargingNormallyLenovoAsync().ConfigureAwait(false) ?? true;
-
-        var status = (adapterConnected, chargingNormally) switch
+        return _lastReportedStatus = (adapterConnected, acFitForOc && chargingNormally) switch
         {
             (true, false) => PowerAdapterStatus.ConnectedLowWattage,
             (true, _) => PowerAdapterStatus.Connected,
-            _ => PowerAdapterStatus.Disconnected,
+            (false, _) => PowerAdapterStatus.Disconnected,
         };
-
-        _lastReportedStatus = status;
-        return status;
     }
 
     public static bool IsBatterySaverEnabled()
     {
-        if (!PInvoke.GetSystemPowerStatus(out var systemPowerStatus))
-        {
+        if (!PInvoke.GetSystemPowerStatus(out var sps))
             return false;
-        }
 
-        return systemPowerStatus.SystemStatusFlag == 1;
+        return sps.SystemStatusFlag == 1;
     }
 
     public static async Task RestartAsync()
@@ -65,14 +57,7 @@ public static class Power
         await CMD.RunAsync("shutdown", "/r /t 0").ConfigureAwait(false);
     }
 
-    private static async Task<bool?> IsChargingNormallyLenovoAsync()
-    {
-        var acFitForOc = await IsAcFitForOcAsync().ConfigureAwait(false) ?? true;
-        var chargingNormally = await IsChargingNormallyAsync().ConfigureAwait(false) ?? true;
-        return acFitForOc && chargingNormally;
-    }
-
-    private static async Task<bool?> IsAcFitForOcAsync()
+    private static async Task<bool?> IsAcFitForOc()
     {
         try
         {
@@ -88,7 +73,7 @@ public static class Power
         }
     }
 
-    private static async Task<bool?> IsChargingNormallyAsync()
+    private static async Task<bool?> IsChargingNormally()
     {
         try
         {

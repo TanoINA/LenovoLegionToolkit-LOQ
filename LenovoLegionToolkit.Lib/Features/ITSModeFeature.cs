@@ -102,7 +102,9 @@ public partial class ITSModeFeature : IFeature<ITSMode>
             return;
         }
 
-        _overlayTimeoutCts?.Cancel();
+        // SetStateAsync may dispose/replace the CTS concurrently; a late cancel on a disposed CTS is harmless.
+        try { _overlayTimeoutCts?.Cancel(); }
+        catch (ObjectDisposedException) { }
 
         await ApplyPowerChanges().ConfigureAwait(false);
     }
@@ -199,11 +201,6 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
             Log.Instance.Trace($"Setting ITS mode to: {state}");
 
-            if (showNotification)
-            {
-                ITSModeListener.PublishNotification(state);
-            }
-
             try
             {
                 await SetITSModeExAsync(state).ConfigureAwait(false);
@@ -219,15 +216,16 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
                 if (WindowsPowerModeController.IsOverlaySupported)
                 {
-                    Interlocked.Exchange(ref _pendingOverlaySync, 1);
-                    _overlayTimeoutCts?.Cancel();
-                    _overlayTimeoutCts?.Dispose();
-                    _overlayTimeoutCts = new CancellationTokenSource();
-                    _ = WaitForOverlayOrTimeoutAsync(_overlayTimeoutCts.Token);
+                    ScheduleOverlaySync();
                 }
                 else
                 {
                     await ApplyPowerChanges().ConfigureAwait(false);
+                }
+
+                if (showNotification)
+                {
+                    ITSModeListener.PublishNotification(state);
                 }
 
                 SaveCurrentStateToSettings(state);
@@ -711,6 +709,20 @@ public partial class ITSModeFeature : IFeature<ITSMode>
         {
             Log.Instance.Trace($"Failed to notify ITS mode change.", ex);
         }
+    }
+
+    private void ScheduleOverlaySync()
+    {
+        _overlayTimeoutCts?.Cancel();
+        _overlayTimeoutCts?.Dispose();
+
+        var cts = new CancellationTokenSource();
+        _overlayTimeoutCts = cts;
+
+        // Publish the pending flag only after the new CTS is in place, so OnPowerChanged can never
+        // claim the sync and then Cancel() the CTS that was just disposed above.
+        Interlocked.Exchange(ref _pendingOverlaySync, 1);
+        _ = WaitForOverlayOrTimeoutAsync(cts.Token);
     }
 
     private async Task WaitForOverlayOrTimeoutAsync(CancellationToken token)

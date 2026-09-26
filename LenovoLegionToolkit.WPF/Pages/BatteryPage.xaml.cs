@@ -72,6 +72,10 @@ public partial class BatteryPage
                 catch (Exception ex)
                 {
                     Log.Instance.Trace($"Battery information refresh failed.", ex);
+
+                    // Back off so a persistent failure (e.g. no battery) does not busy-spin a core.
+                    try { await Task.Delay(TimeSpan.FromSeconds(2), token); }
+                    catch (OperationCanceledException) { }
                 }
             }
 

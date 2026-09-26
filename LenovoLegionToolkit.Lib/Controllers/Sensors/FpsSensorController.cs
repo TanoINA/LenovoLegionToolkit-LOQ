@@ -65,12 +65,14 @@ namespace LenovoLegionToolkit.Lib.Controllers.Sensors
 
             _isRunning = true;
             _cancellationTokenSource = new CancellationTokenSource();
+            // Capture the token: re-reading the field would let a stale loop adopt a newer session's token.
+            var token = _cancellationTokenSource.Token;
 
             _ = Task.Run(async () =>
             {
                 Process? lastProcess = null;
 
-                while (!_cancellationTokenSource.Token.IsCancellationRequested)
+                while (!token.IsCancellationRequested)
                 {
                     try
                     {
@@ -92,19 +94,21 @@ namespace LenovoLegionToolkit.Lib.Controllers.Sensors
                             lastProcess = null;
                         }
 
-                        await Task.Delay(1000, _cancellationTokenSource.Token).ConfigureAwait(false);
+                        await Task.Delay(1000, token).ConfigureAwait(false);
                     }
-                    catch (TaskCanceledException)
+                    catch (OperationCanceledException)
                     {
                         break;
                     }
                     catch (Exception ex)
                     {
                         Log.Instance.Trace($"Monitoring loop error: {ex.Message}");
-                        await Task.Delay(1000, _cancellationTokenSource.Token).ConfigureAwait(false);
+
+                        try { await Task.Delay(1000, token).ConfigureAwait(false); }
+                        catch (OperationCanceledException) { break; }
                     }
                 }
-            }, _cancellationTokenSource.Token);
+            }, token);
 
             return Task.CompletedTask;
         }

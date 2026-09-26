@@ -59,21 +59,26 @@ public class HWiNFOIntegration(SensorsController sensorController, IntegrationsS
 
     private async Task RefreshLoopAsync(CancellationToken token)
     {
+        var firstRun = true;
         try
         {
-            await SetSensorValuesAsync().ConfigureAwait(false);
-
             while (true)
             {
+                try
+                {
+                    await SetSensorValuesAsync(firstRun).ConfigureAwait(false);
+                    firstRun = false;
+                }
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    // Transient sensor/registry failure must not permanently stop the export.
+                    Log.Instance.Trace($"Failed to set values.", ex);
+                }
+
                 await Task.Delay(_refreshInterval, token).ConfigureAwait(false);
-                await SetSensorValuesAsync(false).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"Failed to set values.", ex);
-        }
     }
 
     private async Task SetSensorValuesAsync(bool firstRun = true)
