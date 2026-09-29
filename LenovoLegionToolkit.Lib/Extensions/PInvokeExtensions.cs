@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Runtime.InteropServices;
 using Windows.Win32;
 using Windows.Win32.Foundation;
@@ -56,9 +56,7 @@ public static class PInvokeExtensions
                 &bytesReturned,
                 null);
 
-            if (ret && bytesReturned < nOutBufferSize)
-                throw new InvalidOperationException($"DeviceIoControl returned {bytesReturned} bytes; expected at least {nOutBufferSize}.");
-            outVal = ret ? Marshal.PtrToStructure<TOut>(lpOutBuffer) : default;
+            outVal = ret && bytesReturned >= nOutBufferSize ? Marshal.PtrToStructure<TOut>(lpOutBuffer) : default;
 
             return ret;
         }
