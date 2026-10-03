@@ -55,7 +55,7 @@ public class RefreshRateFeature(ApplicationSettings settings) : IFeature<Refresh
 
                 if (targetInfo is not null && (targetInfo.IsBoostRefreshRate || targetInfo.IsDynamicRefreshRateSupported))
                 {
-                    var lowFreq = PathDisplayTarget.GetDynamicLowFrequency(maxFreq, result.Select(r => r.Frequency));
+                    var lowFreq = targetInfo.DisplayTarget.GetDynamicLowFrequency(result.Select(r => r.Frequency));
                     if (lowFreq > 0 && lowFreq < maxFreq)
                     {
                         result.Add(new RefreshRate(maxFreq, isDynamic: true, baseFrequency: lowFreq));
@@ -104,11 +104,6 @@ public class RefreshRateFeature(ApplicationSettings settings) : IFeature<Refresh
                 Log.Instance.Trace($"Current refresh rate is {dynamicState}");
                 return dynamicState;
             }
-
-            var defaultLowFreq = PathDisplayTarget.GetDynamicLowFrequency(reportedFrequency, allStates.Where(r => !r.IsDynamic).Select(r => r.Frequency));
-            var inferredDynamicState = new RefreshRate(reportedFrequency, isDynamic: true, baseFrequency: defaultLowFreq);
-            Log.Instance.Trace($"Current refresh rate is {inferredDynamicState}");
-            return inferredDynamicState;
         }
 
         Log.Instance.Trace($"Current refresh rate is {reportedFrequency}Hz");
