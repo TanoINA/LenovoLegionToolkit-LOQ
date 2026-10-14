@@ -2,10 +2,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Management;
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -88,6 +90,75 @@ public partial class App
     #endregion
 
     #region Startup & Exit Logic
+
+    static App()
+    {
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveWpfAssemblies;
+        AssemblyLoadContext.Default.Resolving += ResolveAssemblyLoadContext;
+    }
+
+    private static Assembly? ResolveWpfAssemblies(object? sender, ResolveEventArgs args)
+    {
+        try
+        {
+            var requestedName = new AssemblyName(args.Name).Name;
+            if (string.Equals(requestedName, "Accessibility", StringComparison.OrdinalIgnoreCase))
+            {
+                var desktopDir = Path.GetDirectoryName(typeof(Application).Assembly.Location);
+                if (!string.IsNullOrEmpty(desktopDir))
+                {
+                    var candidate = Path.Combine(desktopDir, "Accessibility.dll");
+                    if (File.Exists(candidate))
+                    {
+                        return Assembly.LoadFrom(candidate);
+                    }
+                }
+
+                var baseDirCandidate = Path.Combine(AppContext.BaseDirectory, "Accessibility.dll");
+                if (File.Exists(baseDirCandidate))
+                {
+                    return Assembly.LoadFrom(baseDirCandidate);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore resolution errors and return null to allow default fallback.
+        }
+
+        return null;
+    }
+
+    private static Assembly? ResolveAssemblyLoadContext(AssemblyLoadContext context, AssemblyName assemblyName)
+    {
+        try
+        {
+            if (string.Equals(assemblyName.Name, "Accessibility", StringComparison.OrdinalIgnoreCase))
+            {
+                var desktopDir = Path.GetDirectoryName(typeof(Application).Assembly.Location);
+                if (!string.IsNullOrEmpty(desktopDir))
+                {
+                    var candidate = Path.Combine(desktopDir, "Accessibility.dll");
+                    if (File.Exists(candidate))
+                    {
+                        return context.LoadFromAssemblyPath(candidate);
+                    }
+                }
+
+                var baseDirCandidate = Path.Combine(AppContext.BaseDirectory, "Accessibility.dll");
+                if (File.Exists(baseDirCandidate))
+                {
+                    return context.LoadFromAssemblyPath(baseDirCandidate);
+                }
+            }
+        }
+        catch
+        {
+            // Ignore resolution errors and return null to allow default fallback.
+        }
+
+        return null;
+    }
 
     private async void Application_Startup(object sender, StartupEventArgs e)
     {
