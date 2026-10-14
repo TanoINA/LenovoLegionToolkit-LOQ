@@ -55,6 +55,7 @@ agent/
 agents/
 .crewai/
 .autogen/
+AGENTS.md
 
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
@@ -488,3 +489,4 @@ FodyWeavers.xsd
 # Local HID tracing utility
 /tools/HidSetFeatureTrace/
 /docs
+/CapabilityProbe

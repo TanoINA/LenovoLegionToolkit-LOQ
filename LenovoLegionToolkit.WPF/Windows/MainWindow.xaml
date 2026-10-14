@@ -45,9 +45,10 @@
 
         <wpfui:TitleBar Grid.Row="0" />
 
-        <Grid Grid.Row="0" Margin="12,4,150,4">
+        <Grid Grid.Row="0" Margin="12,0,150,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
@@ -65,8 +66,10 @@
             <custom:Badge
                 x:Name="_openLogIndicator"
                 Grid.Column="1"
-                Margin="0,0,8,0"
-                Padding="8,2,8,2"
+                Height="26"
+                Margin="0,0,2,0"
+                Padding="8,0,8,0"
+                VerticalAlignment="Top"
                 Appearance="Caution"
                 Content="Log"
                 Cursor="Hand"
@@ -79,7 +82,10 @@
             <custom:Badge
                 x:Name="_deviceInfoIndicator"
                 Grid.Column="2"
-                Padding="8,2,8,2"
+                Height="26"
+                Margin="0,0,2,0"
+                Padding="8,0,8,0"
+                VerticalAlignment="Top"
                 Appearance="Transparent"
                 Cursor="Hand"
                 Focusable="True"
@@ -87,6 +93,19 @@
                 MouseLeftButtonDown="DeviceInfoIndicator_Click"
                 MouseRightButtonDown="DeviceInfoIndicator_Click"
                 Visibility="Collapsed" />
+
+            <custom:Badge
+                x:Name="_themeToggle"
+                Grid.Column="3"
+                Width="32"
+                Height="26"
+                Padding="0"
+                VerticalAlignment="Top"
+                Appearance="Transparent"
+                Cursor="Hand"
+                MouseLeftButtonDown="ThemeToggle_Click">
+                <wpfui:SymbolIcon x:Name="_themeToggleIcon" Symbol="CircleHalfFill24" />
+            </custom:Badge>
 
         </Grid>
 
@@ -106,7 +125,9 @@
                 Cursor=""
                 Frame="{Binding ElementName=_rootFrame}"
                 Navigated="NavigationStore_Navigated"
-                SelectedPageIndex="0">
+                SelectedPageIndex="0"
+                TransitionDuration="100"
+                TransitionType="FadeIn">
 
                 <wpfui:NavigationStore.Items>
                     <custom:NavigationItem
@@ -227,7 +248,7 @@
                 <TextBlock
                     Focusable="True"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                    Text="{x:Static resources:Resource.MainWindows_VantageRunning}" />
+                    Text="{x:Static resources:Resource.MainWindow_VantageRunning}" />
             </StackPanel>
         </Border>
 
@@ -287,7 +308,7 @@
                 <TextBlock
                     Focusable="True"
                     Foreground="{DynamicResource TextFillColorPrimaryBrush}"
-                    Text="{x:Static resources:Resource.MainWindows_FnKeysRunning}" />
+                    Text="{x:Static resources:Resource.MainWindow_FnKeysRunning}" />
             </StackPanel>
         </Border>
 

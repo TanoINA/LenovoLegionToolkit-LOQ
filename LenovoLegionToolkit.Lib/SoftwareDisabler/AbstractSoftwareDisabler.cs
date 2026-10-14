@@ -1,13 +1,17 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.ServiceProcess;
+using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Extensions;
+using LenovoLegionToolkit.Lib.Resources;
+using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.Utils;
 using TaskService = Microsoft.Win32.TaskScheduler.TaskService;
+using TimeoutException = System.TimeoutException;
 
 namespace LenovoLegionToolkit.Lib.SoftwareDisabler;
 
@@ -20,89 +24,123 @@ public abstract class AbstractSoftwareDisabler
         public SoftwareStatus Status { get; init; }
     }
 
+    private const string RUN_KEY = @"Software\Microsoft\Windows\CurrentVersion\Run";
+    private const string STARTUP_APPROVED_RUN_KEY = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+
+    private static readonly string[] Hives = ["HKEY_CURRENT_USER", "HKEY_LOCAL_MACHINE"];
+    private static readonly byte[] EnabledStartupEntry = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+
     protected abstract IEnumerable<string> ScheduledTasksPaths { get; }
     protected abstract IEnumerable<string> ServiceNames { get; }
     protected abstract IEnumerable<string> ProcessNames { get; }
 
+    protected virtual IEnumerable<string> DriverNamePrefixes => [];
+    protected virtual IEnumerable<string> DriverPackageRoots => [];
+    protected virtual IEnumerable<string> StartupEntryNames => [];
+    protected virtual IEnumerable<string> StartupEntryRoots => [];
+
+    private readonly List<string> _notStoppedServices = [];
+
+    public string? LastFailureReason { get; private set; }
+
     public event EventHandler<AbstractSoftwareDisablerEventArgs>? OnRefreshed;
 
-    private record StatusCache(SoftwareStatus Status, long Timestamp);
-    private volatile StatusCache? _cache;
-    private static readonly long CacheDurationTicks = Stopwatch.Frequency * 5;
-    private readonly global::System.Threading.SemaphoreSlim _statusLock = new(1, 1);
-
-    public void InvalidateCache() => _cache = null;
-
-    public async Task<SoftwareStatus> GetStatusAsync(bool forceRefresh = false)
+    public Task<SoftwareStatus> GetStatusAsync() => Task.Run(() =>
     {
-        var currentCache = _cache;
-        if (!forceRefresh && currentCache != null && (Stopwatch.GetTimestamp() - currentCache.Timestamp) < CacheDurationTicks)
-            return currentCache.Status;
+        bool isEnabled;
+        bool isInstalled;
 
-        await _statusLock.WaitAsync().ConfigureAwait(false);
         try
         {
-            currentCache = _cache;
-            if (!forceRefresh && currentCache != null && (Stopwatch.GetTimestamp() - currentCache.Timestamp) < CacheDurationTicks)
-                return currentCache.Status;
+            (isEnabled, isInstalled) = EvaluateStatus();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Exception while getting status. [type={GetType().Name}]", ex);
 
-            var status = await Task.Run(() =>
-            {
-                bool isEnabled;
-                bool isInstalled;
+            isEnabled = false;
+            isInstalled = false;
+        }
 
-                try
-                {
-                    var services = RunningServices().ToArray();
-                    var processes = RunningProcesses().ToArray();
+        Log.Instance.Trace($"Status: {isEnabled},{isInstalled} [type={GetType().Name}]");
 
-                    Log.Instance.Trace($"Running services count: {services.Length}. [type={GetType().Name}, services={string.Join(",", services)}]");
-                    Log.Instance.Trace($"Running processes count: {processes.Length}. [type={GetType().Name}, processes={string.Join(",", processes)}]");
+        SoftwareStatus status;
 
-                    isEnabled = services.Length != 0 || processes.Length != 0;
-                    isInstalled = IsInstalled();
-                }
-                catch (Exception ex)
-                {
-                    Log.Instance.Trace($"Exception while getting status. [type={GetType().Name}]", ex);
+        if (isEnabled)
+            status = SoftwareStatus.Enabled;
+        else if (!isInstalled)
+            status = SoftwareStatus.NotFound;
+        else
+            status = SoftwareStatus.Disabled;
 
-                    isEnabled = false;
-                    isInstalled = false;
-                }
+        OnRefreshed?.Invoke(this, new() { Status = status });
 
-                Log.Instance.Trace($"Status: {isEnabled},{isInstalled} [type={GetType().Name}]");
+        return status;
+    });
 
-                SoftwareStatus s;
-                if (isEnabled)
-                    s = SoftwareStatus.Enabled;
-                else if (!isInstalled)
-                    s = SoftwareStatus.NotFound;
-                else
-                    s = SoftwareStatus.Disabled;
+    private (bool IsEnabled, bool IsInstalled) EvaluateStatus()
+    {
+        var services = AllServices().ToArray();
 
-                return s;
-            }).ConfigureAwait(false);
+        try
+        {
+            var runningServices = RunningServices(services).ToArray();
+            var processes = RunningProcesses().ToArray();
 
-            _cache = new StatusCache(status, Stopwatch.GetTimestamp());
+            Log.Instance.Trace($"Running services count: {runningServices.Length}. [type={GetType().Name}, services={string.Join(",", runningServices)}]");
+            Log.Instance.Trace($"Running processes count: {processes.Length}. [type={GetType().Name}, processes={string.Join(",", processes)}]");
 
-            OnRefreshed?.Invoke(this, new() { Status = status });
-
-            return status;
+            return (runningServices.Length != 0 || processes.Length != 0, IsInstalled(services));
         }
         finally
         {
-            _statusLock.Release();
+            DisposeServices(services);
         }
+    }
+
+    private string BuildFailureReason()
+    {
+        var services = AllServices().ToArray();
+
+        string[] runningServices;
+        string[] runningProcesses;
+
+        try
+        {
+            runningServices = RunningServices(services).ToArray();
+            runningProcesses = RunningProcesses().ToArray();
+        }
+        finally
+        {
+            DisposeServices(services);
+        }
+
+        var reasons = new List<string>();
+
+        if (runningServices.Length != 0)
+            reasons.Add(string.Format(Resource.SoftwareDisabler_ServicesStillRunning_Message, string.Join(", ", runningServices)));
+
+        if (runningProcesses.Length != 0)
+            reasons.Add(string.Format(Resource.SoftwareDisabler_ProcessesStillRunning_Message, string.Join(", ", runningProcesses)));
+
+        if (_notStoppedServices.Count != 0)
+            reasons.Add(string.Format(Resource.SoftwareDisabler_ServicesRequiringRestart_Message, string.Join(", ", _notStoppedServices)));
+
+        return string.Join("; ", reasons);
     }
 
     public virtual Task EnableAsync() => Task.Run(async () =>
     {
         Log.Instance.Trace($"Enabling... [type={GetType().Name}]");
 
+        LastFailureReason = null;
+
         SetScheduledTasksEnabled(true);
         SetServicesEnabled(true);
+        SetDriversEnabled(true);
+        SetStartupEntriesEnabled(true);
 
-        _ = await GetStatusAsync(true).ConfigureAwait(false);
+        _ = await GetStatusAsync().ConfigureAwait(false);
 
         Log.Instance.Trace($"Enabled [type={GetType().Name}]");
     });
@@ -111,67 +149,82 @@ public abstract class AbstractSoftwareDisabler
     {
         Log.Instance.Trace($"Disabling... [type={GetType().Name}]");
 
+        LastFailureReason = null;
+        _notStoppedServices.Clear();
+
         SetScheduledTasksEnabled(false);
         SetServicesEnabled(false);
         await KillProcessesAsync().ConfigureAwait(false);
+        SetDriversEnabled(false);
+        SetStartupEntriesEnabled(false);
 
-        _ = await GetStatusAsync(true).ConfigureAwait(false);
+        var status = await GetStatusAsync().ConfigureAwait(false);
 
-        Log.Instance.Trace($"Disabled [type={GetType().Name}]");
+        if (status == SoftwareStatus.Enabled)
+        {
+            LastFailureReason = BuildFailureReason();
+
+            Log.Instance.Trace($"Disabled, restart required. [type={GetType().Name}, reason={LastFailureReason}]");
+        }
+        else
+        {
+            Log.Instance.Trace($"Disabled [type={GetType().Name}]");
+        }
     });
 
-    private bool IsInstalled()
+    private static IEnumerable<ServiceController> AllServices() =>
+        ServiceController.GetServices().Concat(ServiceController.GetDevices());
+
+    private static void DisposeServices(IEnumerable<ServiceController> services)
     {
-        var services = ServiceController.GetServices();
-        try
-        {
-            return services.Any(s => ServiceNames.Contains(s.ServiceName));
-        }
-        finally
-        {
-            foreach (var s in services) s.Dispose();
-        }
+        foreach (var service in services)
+            service.Dispose();
     }
 
-    private IEnumerable<string> RunningServices()
+    private static bool ServiceExists(string serviceName, IEnumerable<ServiceController> services) => services.Any(s => s.ServiceName == serviceName);
+
+    private IEnumerable<string> ActiveDriverNamePrefixes()
     {
-        var services = ServiceController.GetServices();
-        try
-        {
-            var result = new List<string>();
-            foreach (var s in ServiceNames)
-            {
-                if (IsServiceEnabled(s, services))
-                    result.Add(s);
-            }
-            return result;
-        }
-        finally
-        {
-            foreach (var s in services) s.Dispose();
-        }
+        var driverPackageRoots = DriverPackageRoots.ToArray();
+        return driverPackageRoots.Length == 0 || driverPackageRoots.Any(Directory.Exists) ? DriverNamePrefixes : [];
     }
+
+    private IEnumerable<string> MatchingDriverNames(IEnumerable<ServiceController> services)
+    {
+        var driverNamePrefixes = ActiveDriverNamePrefixes().ToArray();
+
+        return driverNamePrefixes.Length == 0
+            ? []
+            : services
+                .Where(s => driverNamePrefixes.Any(p => s.ServiceName.StartsWith(p, StringComparison.InvariantCultureIgnoreCase)))
+                .Select(s => s.ServiceName);
+    }
+
+    private IEnumerable<string> AllServiceNames(IEnumerable<ServiceController> services) => ServiceNames.Concat(MatchingDriverNames(services));
+
+    private bool IsInstalled(IEnumerable<ServiceController> services) => AllServiceNames(services).Any(s => ServiceExists(s, services));
+
+    private IEnumerable<string> RunningServices(IEnumerable<ServiceController> services) =>
+        AllServiceNames(services).Where(s => IsServiceEnabled(s, services));
 
     protected virtual IEnumerable<string> RunningProcesses()
     {
-        foreach (var processName in ProcessNames)
+        foreach (var process in Process.GetProcesses())
         {
-            Process[] procs;
-            try
+            foreach (var processName in ProcessNames)
             {
-                procs = Process.GetProcessesByName(processName);
-            }
-            catch
-            {
-                continue;
-            }
+                var name = string.Empty;
 
-            if (procs.Length > 0)
-            {
-                foreach (var p in procs)
-                    p.Dispose();
+                try
+                {
+                    name = process.ProcessName;
+                    if (!name.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
+                        continue;
+                }
+                catch {  /* Ignore */ }
 
-                yield return processName;
+                if (!string.IsNullOrEmpty(name))
+                    yield return name;
             }
         }
     }
@@ -191,6 +244,106 @@ public abstract class AbstractSoftwareDisabler
             return false;
         }
     }
+
+    private static string ExtractExecutablePath(string commandLine)
+    {
+        var value = commandLine.Trim();
+
+        if (value.StartsWith('"'))
+        {
+            var end = value.IndexOf('"', 1);
+            if (end > 1)
+                value = value[1..end];
+        }
+        else
+        {
+            var end = value.IndexOf(".exe", StringComparison.OrdinalIgnoreCase);
+            if (end >= 0)
+                value = value[..(end + 4)];
+        }
+
+        return NormalizePath(value);
+    }
+
+    private static string NormalizePath(string path)
+    {
+        var result = Environment.ExpandEnvironmentVariables(path);
+
+        if (result.StartsWith(@"\??\", StringComparison.Ordinal))
+            result = result[4..];
+
+        if (result.StartsWith(@"\SystemRoot\", StringComparison.OrdinalIgnoreCase))
+            result = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), result[12..]);
+
+        if (result.StartsWith(@"\\", StringComparison.Ordinal))
+            return result;
+
+        while (result.Contains(@"\\", StringComparison.Ordinal))
+            result = result.Replace(@"\\", @"\");
+
+        return result;
+    }
+
+    private static string[] GetRoots(IEnumerable<string> roots) =>
+        roots.Where(r => !string.IsNullOrWhiteSpace(r)).Select(r => NormalizePath(r.Trim()).TrimEnd('\\') + '\\').ToArray();
+
+    private void SetStartupEntriesEnabled(bool enabled)
+    {
+        var startupEntryNames = StartupEntryNames.ToArray();
+        var startupEntryRoots = GetRoots(StartupEntryRoots);
+
+        if (startupEntryNames.Length == 0 && startupEntryRoots.Length == 0)
+            return;
+
+        foreach (var hive in Hives)
+            foreach (var name in GetStartupEntryNames(hive, startupEntryNames, startupEntryRoots))
+                SetStartupEntryEnabled(hive, name, enabled);
+    }
+
+    private IEnumerable<string> GetStartupEntryNames(string hive, string[] startupEntryNames, string[] startupEntryRoots)
+    {
+        var valueNames = Registry.GetValueNames(hive, RUN_KEY);
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var name in startupEntryNames)
+        {
+            if (valueNames.Contains(name, StringComparer.OrdinalIgnoreCase))
+                result.Add(name);
+        }
+
+        foreach (var valueName in valueNames)
+        {
+            var command = Registry.GetValue(hive, RUN_KEY, valueName, string.Empty);
+            if (string.IsNullOrWhiteSpace(command))
+                continue;
+
+            var path = ExtractExecutablePath(command);
+            if (startupEntryRoots.Any(r => path.StartsWith(r, StringComparison.OrdinalIgnoreCase)))
+                result.Add(valueName);
+        }
+
+        return result;
+    }
+
+    private void SetStartupEntryEnabled(string hive, string name, bool enabled)
+    {
+        Log.Instance.Trace($"Setting autorun entry {name} to {enabled}. [type={GetType().Name}]");
+
+        var value = enabled ? EnabledStartupEntry : CreateDisabledStartupEntry();
+
+        try
+        {
+            Registry.SetValue(hive, STARTUP_APPROVED_RUN_KEY, name, value, false, Microsoft.Win32.RegistryValueKind.Binary);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to set autorun entry {name} in {hive}.", ex);
+
+            throw new SoftwareDisablerException($"Failed to set autorun entry {name} in {hive} [type={GetType().Name}]", ex);
+        }
+    }
+
+    private static byte[] CreateDisabledStartupEntry() => [0x03, 0x00, 0x00, 0x00, .. BitConverter.GetBytes(DateTime.Now.ToFileTime())];
 
     private void SetScheduledTasksEnabled(bool enabled)
     {
@@ -229,32 +382,45 @@ public abstract class AbstractSoftwareDisabler
 
     private void SetServicesEnabled(bool enabled)
     {
-        foreach (var serviceName in ServiceNames)
-            SetServiceEnabled(serviceName, enabled);
+        var services = AllServices().ToArray();
+
+        try
+        {
+            foreach (var serviceName in ServiceNames)
+                SetServiceEnabled(serviceName, enabled, services);
+        }
+        finally
+        {
+            DisposeServices(services);
+        }
     }
 
-    private void SetServiceEnabled(string serviceName, bool enabled)
+    private void SetDriversEnabled(bool enabled)
+    {
+        var services = AllServices().ToArray();
+
+        try
+        {
+            foreach (var driverName in MatchingDriverNames(services))
+                SetServiceEnabled(driverName, enabled, services);
+        }
+        finally
+        {
+            DisposeServices(services);
+        }
+    }
+
+    private void SetServiceEnabled(string serviceName, bool enabled, IEnumerable<ServiceController> services)
     {
         try
         {
             Log.Instance.Trace($"Setting service {serviceName} to {enabled}. [type={GetType().Name}]");
 
-            // Wrap GetServices() so the returned ServiceController array (potentially
-            // hundreds of unmanaged SCM handles) is always disposed. Previously this
-            // leaked the whole array on every enable/disable toggle.
-            var allServices = ServiceController.GetServices();
-            try
+            if (!ServiceExists(serviceName, services))
             {
-                if (!allServices.Any(s => s.ServiceName == serviceName))
-                {
-                    Log.Instance.Trace($"Service {serviceName} not found. [type={GetType().Name}]");
+                Log.Instance.Trace($"Service {serviceName} not found. [type={GetType().Name}]");
 
-                    return;
-                }
-            }
-            finally
-            {
-                foreach (var s in allServices) s.Dispose();
+                return;
             }
 
             var service = new ServiceController(serviceName);
@@ -270,10 +436,18 @@ public abstract class AbstractSoftwareDisabler
                     if (service.Status != ServiceControllerStatus.Running)
                     {
                         Log.Instance.Trace($"Starting service {serviceName}... [type={GetType().Name}]");
-                        service.Start();
-                        // 30s timeout: WaitForStatus without a timeout can block the
-                        // thread pool forever if a service hangs in StartPending.
-                        service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(30));
+
+                        try
+                        {
+                            service.Start();
+                            service.WaitForStatus(ServiceControllerStatus.Running, TimeSpan.FromSeconds(15));
+
+                            Log.Instance.Trace($"Service {serviceName} started. [startType={service.StartType}, status={service.Status}, type={GetType().Name}]");
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Instance.Trace($"Could not start service {serviceName}, it may be missing its executable. Continuing. [type={GetType().Name}]", ex);
+                        }
                     }
                     else
                     {
@@ -285,12 +459,25 @@ public abstract class AbstractSoftwareDisabler
                     if (service.CanStop)
                     {
                         Log.Instance.Trace($"Stopping service {serviceName}... [type={GetType().Name}]");
-                        service.Stop();
-                        // Same 30s timeout for the stop path.
-                        service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(30));
+
+                        try
+                        {
+                            service.Stop();
+                            service.WaitForStatus(ServiceControllerStatus.Stopped, TimeSpan.FromSeconds(15));
+
+                            Log.Instance.Trace($"Service {serviceName} stopped. [startType={service.StartType}, status={service.Status}, type={GetType().Name}]");
+                        }
+                        catch (TimeoutException ex)
+                        {
+                            _notStoppedServices.Add(serviceName);
+
+                            Log.Instance.Trace($"Service {serviceName} did not stop in time, it needs a restart. [status={service.Status}, type={GetType().Name}]", ex);
+                        }
                     }
                     else
                     {
+                        _notStoppedServices.Add(serviceName);
+
                         Log.Instance.Trace($"Will not stop service {serviceName}. [status={service.Status}, canStop={service.CanStop}, type={GetType().Name}]]");
                     }
                 }
@@ -300,11 +487,11 @@ public abstract class AbstractSoftwareDisabler
                 service.Close();
             }
         }
-        catch (InvalidOperationException ex) when (ex.InnerException is Win32Exception { NativeErrorCode: 1060 })
+        catch (Exception ex)
         {
-            Log.Instance.Trace($"Service {serviceName} could not be set to {enabled}");
+            Log.Instance.Trace($"Failed to set service {serviceName} to {enabled}.", ex);
 
-            throw new SoftwareDisablerException(serviceName, ex);
+            throw new SoftwareDisablerException($"{serviceName} [type={GetType().Name}]", ex);
         }
     }
 
@@ -318,7 +505,10 @@ public abstract class AbstractSoftwareDisabler
                     if (process.ProcessName.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
                     {
                         process.Kill(true);
-                        await process.WaitForExitAsync().ConfigureAwait(false);
+
+                        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+
+                        await process.WaitForExitAsync(cancellationTokenSource.Token).ConfigureAwait(false);
                     }
                 }
                 catch (Exception ex)

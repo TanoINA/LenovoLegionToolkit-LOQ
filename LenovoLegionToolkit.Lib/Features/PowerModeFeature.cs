@@ -4,6 +4,7 @@ using LenovoLegionToolkit.Lib.Listeners;
 using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
+using LenovoLegionToolkit.Lib.SoftwareDisabler;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -53,7 +54,9 @@ public class PowerModeFeature(
         return states.ToArray();
     }
 
-    public override async Task SetStateAsync(PowerModeState state)
+    public override Task SetStateAsync(PowerModeState state) => SetStateAsync(state, applyGodModePreset: true);
+
+    public async Task SetStateAsync(PowerModeState state, bool applyGodModePreset)
     {
         var allStates = await GetAllStatesAsync().ConfigureAwait(false);
         if (!allStates.Contains(state))
@@ -73,43 +76,43 @@ public class PowerModeFeature(
         if (mi.Properties.HasQuietToPerformanceModeSwitchingBug && currentState == PowerModeState.Quiet && state == PowerModeState.Performance)
         {
             Log.Instance.Trace($"Workaround: Quiet->Performance bug, routing via Balance");
-            thermalModeListener.SuppressNext(ThermalModeState.Balance);
-            powerModeListener.SuppressNext(PowerModeState.Balance);
+            thermalModeListener.SuppressNext();
             await base.SetStateAsync(PowerModeState.Balance).ConfigureAwait(false);
             await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
 
         if (mi.Properties.HasGodModeToOtherModeSwitchingBug && currentState == PowerModeState.GodMode && state != PowerModeState.GodMode)
         {
-            Log.Instance.Trace($"Workaround: GodMode->other bug, routing via intermediate");
-            var intermediate = state switch
-            {
-                PowerModeState.Quiet => PowerModeState.Performance,
-                PowerModeState.Balance => PowerModeState.Quiet,
-                PowerModeState.Performance => PowerModeState.Balance,
-                PowerModeState.Extreme => PowerModeState.Extreme,
-                _ => state
-            };
+            Log.Instance.Trace($"Workaround: GodMode->other bug, routing via {state} intermediate");
+            thermalModeListener.SuppressNext();
 
-            thermalModeListener.SuppressNext(ToThermalModeState(intermediate));
-            powerModeListener.SuppressNext(intermediate);
-            await base.SetStateAsync(intermediate).ConfigureAwait(false);
+            switch (state)
+            {
+                case PowerModeState.Quiet:
+                    await base.SetStateAsync(PowerModeState.Performance).ConfigureAwait(false);
+                    break;
+                case PowerModeState.Balance:
+                    await base.SetStateAsync(PowerModeState.Quiet).ConfigureAwait(false);
+                    break;
+                case PowerModeState.Performance:
+                    await base.SetStateAsync(PowerModeState.Balance).ConfigureAwait(false);
+                    break;
+                case PowerModeState.Extreme:
+                    await base.SetStateAsync(PowerModeState.Extreme).ConfigureAwait(false);
+                    break;
+            }
+
             await Task.Delay(TimeSpan.FromMilliseconds(500)).ConfigureAwait(false);
         }
 
         var sw = Stopwatch.StartNew();
-        thermalModeListener.SuppressNext(ToThermalModeState(state));
-        powerModeListener.SuppressNext(state);
+        thermalModeListener.SuppressNext();
         Log.Instance.Trace($"Calling SetSmartFanModeAsync({(int)(object)state + 1})...");
-        await base.SetStateAsync(state).ConfigureAwait(false);
-        Log.Instance.Trace($"SetSmartFanModeAsync completed [elapsed={sw.ElapsedMilliseconds}ms]");
-
-        Log.Instance.Trace($"Calling PowerModeListener.NotifyAsync({state})...");
-        await powerModeListener.NotifyAsync(state).ConfigureAwait(false);
-        Log.Instance.Trace($"PowerModeListener.NotifyAsync completed");
+        await powerModeListener.ChangeAsync(state, () => base.SetStateAsync(state), applyGodModePreset).ConfigureAwait(false);
+        Log.Instance.Trace($"Power mode change completed [elapsed={sw.ElapsedMilliseconds}ms]");
 
         var thermalMode = await WMI.LenovoGameZoneData.GetThermalModeAsync().ConfigureAwait(false);
-        Log.Instance.Trace($"Thermal Mode after switch: {(ThermalModeState)thermalMode} [expected={(ThermalModeState)(int)(object)state}]");
+        Log.Instance.Trace($"Thermal Mode after switch: {(ThermalModeState)thermalMode} [expected={state}]");
     }
 
     public async Task SuspendMode(PowerModeState state)
@@ -119,32 +122,22 @@ public class PowerModeFeature(
         await SetStateAsync(state).ConfigureAwait(false);
     }
 
-    public async Task EnsureCorrectWindowsPowerSettingsAreSetAsync(GodModeSettingsStore.Preset? preset = null, bool skipThrottle = false)
+    public async Task EnsureCorrectWindowsPowerSettingsAreSetAsync(GodModeSettingsStore.Preset? preset = null, bool skipThrottle = false, SoftwareStatus? vantageStatus = null)
     {
         var state = await GetStateAsync().ConfigureAwait(false);
         await windowsPowerModeController.SetPowerModeAsync(state, preset, skipThrottle).ConfigureAwait(false);
-        await windowsPowerPlanController.SetPowerPlanAsync(state, true, preset, skipThrottle).ConfigureAwait(false);
+        await windowsPowerPlanController.SetPowerPlanAsync(state, true, preset, skipThrottle, vantageStatus).ConfigureAwait(false);
     }
 
-    public async Task EnsureGodModeStateIsAppliedAsync()
+    public async Task EnsureGodModeStateIsAppliedAsync(bool skipThrottle = false)
     {
         var state = await GetStateAsync().ConfigureAwait(false);
         if (state != PowerModeState.GodMode)
         {
-            await EnsureCorrectWindowsPowerSettingsAreSetAsync().ConfigureAwait(false);
+            await EnsureCorrectWindowsPowerSettingsAreSetAsync(skipThrottle: skipThrottle).ConfigureAwait(false);
             return;
         }
 
         await godModeController.ApplyStateAsync().ConfigureAwait(false);
     }
-
-    private static ThermalModeState ToThermalModeState(PowerModeState state) => state switch
-    {
-        PowerModeState.Quiet => ThermalModeState.Quiet,
-        PowerModeState.Balance => ThermalModeState.Balance,
-        PowerModeState.Performance => ThermalModeState.Performance,
-        PowerModeState.Extreme => ThermalModeState.Extreme,
-        PowerModeState.GodMode => ThermalModeState.GodMode,
-        _ => ThermalModeState.Unknown
-    };
 }

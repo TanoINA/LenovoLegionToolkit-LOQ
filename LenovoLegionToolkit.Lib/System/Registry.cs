@@ -130,6 +130,12 @@ public static class Registry
         return baseKey.OpenSubKey(subKey)?.GetSubKeyNames().Select(s => Path.Combine(subKey, s)).ToArray() ?? [];
     }
 
+    public static string[] GetValueNames(string hive, string subKey)
+    {
+        using var baseKey = GetBaseKey(hive);
+        return baseKey.OpenSubKey(subKey)?.GetValueNames() ?? [];
+    }
+
     public static T GetValue<T>(string hive, string subKey, string valueName, T defaultValue, bool doNotExpand = false)
     {
         using var baseKey = GetBaseKey(hive);
@@ -163,6 +169,13 @@ public static class Registry
         if (key is null)
             return;
         baseKey.DeleteSubKeyTree(subKey);
+    }
+
+    public static void DeleteValue(string hive, string subKey, string valueName)
+    {
+        using var baseKey = GetBaseKey(hive);
+        using var key = baseKey.OpenSubKey(subKey, writable: true);
+        key?.DeleteValue(valueName, throwOnMissingValue: false);
     }
 
     private static bool AddPermissions(string hive, string subKey)

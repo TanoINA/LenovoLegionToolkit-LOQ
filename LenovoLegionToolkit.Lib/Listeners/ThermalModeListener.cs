@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Controllers;
 using LenovoLegionToolkit.Lib.System.Management;
@@ -8,8 +8,7 @@ namespace LenovoLegionToolkit.Lib.Listeners;
 
 public class ThermalModeListener(
     WindowsPowerModeController windowsPowerModeController,
-    WindowsPowerPlanController windowsPowerPlanController,
-    PowerModeListener powerModeListener)
+    WindowsPowerPlanController windowsPowerPlanController)
     : AbstractWMIListener<ThermalModeListener.ChangedEventArgs, ThermalModeState, int>(WMI.LenovoGameZoneThermalModeEvent.Listen)
 {
     public class ChangedEventArgs(ThermalModeState state) : EventArgs
@@ -17,37 +16,7 @@ public class ThermalModeListener(
         public ThermalModeState State { get; } = state;
     }
 
-    private readonly object _suppressionLock = new();
-    private ThermalModeState? _suppressedState;
-    private DateTime _suppressionExpiresUtc = DateTime.MinValue;
-
-    public void SuppressNext(ThermalModeState expectedState, TimeSpan lifetime)
-    {
-        lock (_suppressionLock)
-        {
-            _suppressedState = expectedState;
-            _suppressionExpiresUtc = DateTime.UtcNow + lifetime;
-            Log.Instance.Trace($"ThermalModeListener: Suppressing expected WMI event {expectedState} until {_suppressionExpiresUtc:HH:mm:ss.fff}");
-        }
-    }
-
-    public void SuppressNext(ThermalModeState expectedState) => SuppressNext(expectedState, TimeSpan.FromMilliseconds(1000));
-
-    public void SuppressNext() => SuppressNext(ThermalModeState.Balance, TimeSpan.FromMilliseconds(1000));
-
-    private bool ConsumeSuppression(ThermalModeState actualState)
-    {
-        lock (_suppressionLock)
-        {
-            if (_suppressedState == actualState && DateTime.UtcNow < _suppressionExpiresUtc)
-            {
-                _suppressedState = null;
-                _suppressionExpiresUtc = DateTime.MinValue;
-                return true;
-            }
-            return false;
-        }
-    }
+    private readonly ThreadSafeCounter _suppressCounter = new();
 
     protected override ThermalModeState GetValue(int value)
     {
@@ -67,9 +36,9 @@ public class ThermalModeListener(
 
     protected override async Task OnChangedAsync(ThermalModeState state)
     {
-        if (ConsumeSuppression(state))
+        if (!_suppressCounter.Decrement())
         {
-            Log.Instance.Trace($"ThermalModeListener: Suppressed expected WMI event for {state}.");
+            Log.Instance.Trace($"Suppressed.");
             return;
         }
 
@@ -88,15 +57,16 @@ public class ThermalModeListener(
             _ => throw new ArgumentOutOfRangeException(nameof(state), state, null)
         };
 
-        if (powerModeListener.IsRecentlyProcessed(powerModeState, TimeSpan.FromMilliseconds(500)))
-        {
-            Log.Instance.Trace($"ThermalModeListener: state {state} already processed recently by PowerModeListener. Skipping redundant apply.");
-            return;
-        }
-
         Log.Instance.Trace($"ThermalModeListener mapping: ThermalMode={state} -> PowerMode={powerModeState}");
 
         await windowsPowerModeController.SetPowerModeAsync(powerModeState).ConfigureAwait(false);
         await windowsPowerPlanController.SetPowerPlanAsync(powerModeState).ConfigureAwait(false);
+    }
+
+    public void SuppressNext()
+    {
+        Log.Instance.Trace($"Suppressing next...");
+
+        _suppressCounter.Increment();
     }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -6,56 +6,83 @@ namespace LenovoLegionToolkit.Lib.Utils;
 
 public class ThrottleLastDispatcher(TimeSpan interval, string? tag = null)
 {
-    private CancellationTokenSource? _cancellationTokenSource;
     private readonly object _sync = new();
+    private CancellationTokenSource? _cancellationTokenSource;
+    private int _immediateRequests;
+
+    public IDisposable SuppressThrottle()
+    {
+        lock (_sync)
+        {
+            _immediateRequests++;
+            _cancellationTokenSource?.Cancel();
+        }
+
+        var disposed = 0;
+        return new LambdaDisposable(() =>
+        {
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
+            {
+                return;
+            }
+
+            lock (_sync)
+            {
+                _immediateRequests--;
+            }
+        });
+    }
 
     public async Task DispatchAsync(Func<Task> task)
     {
-        CancellationTokenSource cts;
+        var source = new CancellationTokenSource();
+        bool skipDelay;
+
         lock (_sync)
         {
-            try
-            {
-                _cancellationTokenSource?.Cancel();
-                _cancellationTokenSource?.Dispose();
-            }
-            catch (ObjectDisposedException) { }
-
-            _cancellationTokenSource = new CancellationTokenSource();
-            cts = _cancellationTokenSource;
+            _cancellationTokenSource?.Cancel();
+            _cancellationTokenSource = source;
+            skipDelay = _immediateRequests > 0;
         }
 
         try
         {
-            await Task.Delay(interval, cts.Token).ConfigureAwait(false);
+            var token = source.Token;
+
+            if (!skipDelay)
+            {
+                await Task.Delay(interval, token).ConfigureAwait(false);
+            }
+
+            token.ThrowIfCancellationRequested();
+
+            if (tag is not null)
+                Log.Instance.Trace($"Allowing... [tag={tag}]");
+
+            await task().ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cts.IsCancellationRequested)
+        catch (OperationCanceledException)
         {
             if (tag is not null)
                 Log.Instance.Trace($"Throttling... [tag={tag}]");
-
-            return;
         }
+        finally
+        {
+            lock (_sync)
+            {
+                if (ReferenceEquals(_cancellationTokenSource, source))
+                {
+                    _cancellationTokenSource = null;
+                }
 
-        if (tag is not null)
-            Log.Instance.Trace($"Allowing... [tag={tag}]");
-
-        await task().ConfigureAwait(false);
+                source.Dispose();
+            }
+        }
     }
 
     public async Task DispatchImmediateAsync(Func<Task> task)
     {
-        lock (_sync)
-        {
-            try
-            {
-                _cancellationTokenSource?.Cancel();
-                _cancellationTokenSource?.Dispose();
-            }
-            catch (ObjectDisposedException) { }
-
-            _cancellationTokenSource = null;
-        }
+        using var immediate = SuppressThrottle();
 
         if (tag is not null)
             Log.Instance.Trace($"Immediate dispatch... [tag={tag}]");

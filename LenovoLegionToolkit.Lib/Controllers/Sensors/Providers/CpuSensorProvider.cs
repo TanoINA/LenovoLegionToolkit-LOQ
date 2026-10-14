@@ -14,6 +14,10 @@ public class CpuSensorProvider : ISensorProvider
     private static readonly string[] TempFallback = ["Average", "Package", "Tdie", "Core"];
     private static readonly string[] PowerFallback = ["CPU Package", "CPU PPT", "PPT"];
 
+    private static readonly string[] AverageTempFallback = ["Core Average", "CCDs Average (Tdie)"];
+    private static readonly string[] PackageTempFallback = ["CPU Package"];
+    private static readonly string[] MaxTempFallback = ["Core Max", "CCDs Max (Tdie)"];
+
     private static readonly SensorSlot[] Slots =
     [
         new(SensorItem.CpuTemperature, SensorType.Temperature, "Tctl"),
@@ -31,6 +35,12 @@ public class CpuSensorProvider : ISensorProvider
     private List<ISensor> _coreVoltageSensors = [];
     public CpuVoltageMode VoltageMode { get; set; }
     public int VoltageCoreIndex { get; set; }
+
+    private ISensor? _averageTemperatureSensor;
+    private ISensor? _packageTemperatureSensor;
+    private ISensor? _maxTemperatureSensor;
+    private List<ISensor> _coreTemperatureSensors = [];
+    public CpuTemperatureSource TemperatureSource { get; set; }
 
     public int AvailableCoreCount => _coreVoltageSensors.Count;
 
@@ -61,6 +71,10 @@ public class CpuSensorProvider : ISensorProvider
         _coreClocks = [];
         _pCoreClocks = [];
         _eCoreClocks = [];
+        _averageTemperatureSensor = null;
+        _packageTemperatureSensor = null;
+        _maxTemperatureSensor = null;
+        _coreTemperatureSensors = [];
         _powerMonitor.Reset();
         IsAvailable = false;
         IsHybrid = false;
@@ -77,6 +91,15 @@ public class CpuSensorProvider : ISensorProvider
         _sensors[SensorItem.CpuTemperature] ??= cpu.Sensors.FindByKeyword(SensorType.Temperature, TempFallback)!;
         _sensors[SensorItem.CpuPower]       ??= cpu.Sensors.FindPowerSensor(PowerFallback)!;
         _sensors[SensorItem.CpuUtilization] ??= cpu.Sensors.FirstOrDefault(s => s.SensorType == SensorType.Load)!;
+
+        _averageTemperatureSensor = cpu.Sensors.FindByKeyword(SensorType.Temperature, AverageTempFallback);
+        _packageTemperatureSensor = cpu.Sensors.FindByKeyword(SensorType.Temperature, PackageTempFallback);
+        _maxTemperatureSensor = cpu.Sensors.FindByKeyword(SensorType.Temperature, MaxTempFallback);
+        _coreTemperatureSensors = cpu.Sensors
+            .Where(s => s.SensorType == SensorType.Temperature &&
+                        s.Name.Contains('#') &&
+                        !s.Name.Contains("Distance to TjMax", StringComparison.OrdinalIgnoreCase))
+            .ToList();
 
         _avgVoltageSensor = null;
         _coreVoltageSensors = [];
@@ -130,6 +153,14 @@ public class CpuSensorProvider : ISensorProvider
             }
             else if (slot.Item == SensorItem.CpuTemperature)
             {
+                val = TemperatureSource switch
+                {
+                    CpuTemperatureSource.Average => _averageTemperatureSensor?.Value ?? val,
+                    CpuTemperatureSource.Package => _packageTemperatureSensor?.Value ?? val,
+                    CpuTemperatureSource.CoreMax when _maxTemperatureSensor is not null => _maxTemperatureSensor.Value ?? val,
+                    CpuTemperatureSource.CoreMax when _coreTemperatureSensors.Count > 0 => _coreTemperatureSensors.Max(s => s.Value) ?? val,
+                    _ => val,
+                };
                 val = val > MinTemp && val < MaxTemp ? val : -1;
             }
 
@@ -164,6 +195,10 @@ public class CpuSensorProvider : ISensorProvider
         _powerMonitor.Reset();
         _avgVoltageSensor = null;
         _coreVoltageSensors = [];
+        _averageTemperatureSensor = null;
+        _packageTemperatureSensor = null;
+        _maxTemperatureSensor = null;
+        _coreTemperatureSensors = [];
         IsAvailable = false; IsHybrid = false;
         Values = new Dictionary<SensorItem, float>();
     }

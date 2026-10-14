@@ -106,6 +106,18 @@ public class SensorsGroupController : IDisposable
         }
     }
 
+    public CpuTemperatureSource CpuTemperatureSource
+    {
+        get => _cpuProvider.TemperatureSource;
+        set
+        {
+            lock (_configLock)
+            {
+                _cpuProvider.TemperatureSource = value;
+            }
+        }
+    }
+
     public int AvailableVoltageCoreCount => _cpuProvider.AvailableCoreCount;
 
     private bool _isDgpuConnected = true;
@@ -348,7 +360,6 @@ public class SensorsGroupController : IDisposable
     {
         var settings = IoCContainer.Resolve<ApplicationSettings>();
         settings.Store.EnableHardwareSensors = false;
-        settings.Store.UseNewSensorDashboard = false;
         settings.SynchronizeStore();
         InitialState = LibreHardwareMonitorInitialState.Fail;
     }

@@ -9,8 +9,8 @@ using System.Windows.Controls;
 using LenovoLegionToolkit.Lib;
 using LenovoLegionToolkit.Lib.AutoListeners;
 using LenovoLegionToolkit.Lib.Automation;
-using LenovoLegionToolkit.Lib.Controllers.Sensors;
 using LenovoLegionToolkit.Lib.Extensions;
+using LenovoLegionToolkit.Lib.Features;
 using LenovoLegionToolkit.Lib.Messaging;
 using LenovoLegionToolkit.Lib.Messaging.Messages;
 using LenovoLegionToolkit.Lib.Settings;
@@ -116,7 +116,7 @@ public partial class SettingsAppBehaviorControl
             _hardwareSensorsCardHeader.Warning = pawnIOState == PawnIOState.Installed ? string.Empty : Resource.SettingsPage_HardwareSensors_PawnIOWarning;
         }
 
-        _scriptConsoleCard.Visibility = Visibility.Collapsed;
+        _scriptConsoleCard.Visibility = AppFlags.Instance.Debug ? Visibility.Visible : Visibility.Collapsed;
 
         _isRefreshing = false;
     }
@@ -298,36 +298,16 @@ public partial class SettingsAppBehaviorControl
                 _hardwareSensorsToggle.IsChecked = false;
                 return;
             }
-
-            var sensorsController = IoCContainer.Resolve<SensorsGroupController>();
-            if (!sensorsController.IsLibreHardwareMonitorInitialized())
-            {
-                await sensorsController.IsSupportedAsync();
-            }
-        }
-        else
-        {
-            _useNewSensorDashboardToggle.IsChecked = false;
-            _settings.Store.UseNewSensorDashboard = false;
-
-            _osdToggle.IsChecked = false;
-            _OsdSettings.Store.ShowOsd = false;
-            App.Current.OsdWindow?.Hide();
-            _OsdSettings.SynchronizeStore();
         }
 
-        _settings.Store.EnableHardwareSensors = state.Value;
-        _settings.SynchronizeStore();
+        var feature = IoCContainer.Resolve<IFeature<HardwareSensorsState>>();
+        await feature.SetStateAsync(state.Value ? HardwareSensorsState.On : HardwareSensorsState.Off);
 
         if (state.Value)
-        {
             _hardwareSensorSettings.EnsureFileExists();
-        }
 
         _useNewSensorDashboardCardControl.Visibility = state.Value ? Visibility.Visible : Visibility.Collapsed;
         _osdCardControl.Visibility = state.Value ? Visibility.Visible : Visibility.Collapsed;
-
-        MessagingCenter.Publish(new SensorDashboardSwappedMessage());
     }
 
     private async void UseNewSensorDashboard_Toggle(object sender, RoutedEventArgs e)

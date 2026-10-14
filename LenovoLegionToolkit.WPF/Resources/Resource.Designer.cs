@@ -2854,11 +2854,29 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Buy Me a Coffee.
+        /// </summary>
+        public static string DonatePage_DrSkinner_BuyMeACoffee {
+            get {
+                return ResourceManager.GetString("DonatePage_DrSkinner_BuyMeACoffee", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Responsible for core feature development, quality assurance, UI/UX design, and overall project direction as the current project lead..
         /// </summary>
         public static string DonatePage_DrSkinner_Description {
             get {
                 return ResourceManager.GetString("DonatePage_DrSkinner_Description", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to GitHub Sponsors.
+        /// </summary>
+        public static string DonatePage_DrSkinner_GitHubSponsors {
+            get {
+                return ResourceManager.GetString("DonatePage_DrSkinner_GitHubSponsors", resourceCulture);
             }
         }
         
@@ -4439,7 +4457,25 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Keyboard backlight cannot be controlled in here when Lenovo Vantage or its services are running..
+        ///   Looks up a localized string similar to The keyboard backlight cannot be controlled while another Lenovo app or its services are running..
+        /// </summary>
+        public static string Keyboard_SoftwareEnabledWarning_Message {
+            get {
+                return ResourceManager.GetString("Keyboard_SoftwareEnabledWarning_Message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Another Lenovo app is running.
+        /// </summary>
+        public static string Keyboard_SoftwareEnabledWarning_Title {
+            get {
+                return ResourceManager.GetString("Keyboard_SoftwareEnabledWarning_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to The keyboard backlight cannot be controlled while Lenovo Vantage or its services are running..
         /// </summary>
         public static string Keyboard_VantageEnabledWarning_Message {
             get {
@@ -4448,7 +4484,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Vantage or its services are running.
+        ///   Looks up a localized string similar to Lenovo Vantage is running.
         /// </summary>
         public static string Keyboard_VantageEnabledWarning_Title {
             get {
@@ -4531,7 +4567,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Unknown key – can be added.
+        ///   Looks up a localized string similar to Unknown key that can be added.
         /// </summary>
         public static string KeyDiscovery_UnknownKeyTooltip {
             get {
@@ -5080,6 +5116,15 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Lenovo Hotkeys is running in the background..
+        /// </summary>
+        public static string MainWindow_FnKeysRunning {
+            get {
+                return ResourceManager.GetString("MainWindow_FnKeysRunning", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Legion Space is running in the background..
         /// </summary>
         public static string MainWindow_LegionSpaceRunning {
@@ -5197,20 +5242,11 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Hotkeys is running in the background..
-        /// </summary>
-        public static string MainWindows_FnKeysRunning {
-            get {
-                return ResourceManager.GetString("MainWindows_FnKeysRunning", resourceCulture);
-            }
-        }
-        
-        /// <summary>
         ///   Looks up a localized string similar to Lenovo Vantage and/or ImController is running in the background..
         /// </summary>
-        public static string MainWindows_VantageRunning {
+        public static string MainWindow_VantageRunning {
             get {
-                return ResourceManager.GetString("MainWindows_VantageRunning", resourceCulture);
+                return ResourceManager.GetString("MainWindow_VantageRunning", resourceCulture);
             }
         }
         
@@ -7400,6 +7436,24 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Adjusts the refresh rate up to the selected rate to save power..
+        /// </summary>
+        public static string RefreshRateControl_Dynamic_Message {
+            get {
+                return ResourceManager.GetString("RefreshRateControl_Dynamic_Message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Dynamic refresh rate.
+        /// </summary>
+        public static string RefreshRateControl_Dynamic_Title {
+            get {
+                return ResourceManager.GetString("RefreshRateControl_Dynamic_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to Adjust the display refresh rate for smoother motion or power savings..
         /// </summary>
         public static string RefreshRateControl_Message {
@@ -8346,6 +8400,24 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
+        ///   Looks up a localized string similar to Choose which CPU temperature sensor is displayed on the Dashboard and OSD..
+        /// </summary>
+        public static string SensorSettingsPage_CPU_Temperature_Source_Message {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_CPU_Temperature_Source_Message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to CPU Temperature Source.
+        /// </summary>
+        public static string SensorSettingsPage_CPU_Temperature_Source_Title {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_CPU_Temperature_Source_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
         ///   Looks up a localized string similar to dGPU.
         /// </summary>
         public static string SensorSettingsPage_Discrete_GPU_Title {
@@ -8414,6 +8486,42 @@ namespace LenovoLegionToolkit.WPF.Resources {
         public static string SensorSettingsPage_Preferred_GPU_Title {
             get {
                 return ResourceManager.GetString("SensorSettingsPage_Preferred_GPU_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Auto.
+        /// </summary>
+        public static string SensorSettingsPage_TemperatureSource_Auto {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_TemperatureSource_Auto", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Average.
+        /// </summary>
+        public static string SensorSettingsPage_TemperatureSource_Average {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_TemperatureSource_Average", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Core Max.
+        /// </summary>
+        public static string SensorSettingsPage_TemperatureSource_CoreMax {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_TemperatureSource_CoreMax", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Package.
+        /// </summary>
+        public static string SensorSettingsPage_TemperatureSource_Package {
+            get {
+                return ResourceManager.GetString("SensorSettingsPage_TemperatureSource_Package", resourceCulture);
             }
         }
         
@@ -8958,7 +9066,16 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Legion Space may have not been disabled correctly.
+        ///   Looks up a localized string similar to Couldn&apos;t fully disable everything, some items may still be running.
+        /// </summary>
+        public static string SettingsPage_DisableIncomplete_Title {
+            get {
+                return ResourceManager.GetString("SettingsPage_DisableIncomplete_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Legion Space may not have been disabled correctly.
         /// </summary>
         public static string SettingsPage_DisableLegionSpace_Error_Message {
             get {
@@ -8994,7 +9111,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Legion Zone may have not been disabled correctly.
+        ///   Looks up a localized string similar to Legion Zone may not have been disabled correctly.
         /// </summary>
         public static string SettingsPage_DisableLegionZone_Error_Message {
             get {
@@ -9030,7 +9147,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Hotkeys may have not been disabled correctly.
+        ///   Looks up a localized string similar to Lenovo Hotkeys may not have been disabled correctly.
         /// </summary>
         public static string SettingsPage_DisableLenovoHotkeys_Error_Message {
             get {
@@ -9048,8 +9165,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Disable Lenovo Hotkeys and its service without uninstalling it.
-        ///If disabled, this app will handle Fn shortcuts..
+        ///   Looks up a localized string similar to Disable Lenovo Hotkeys and its service without uninstalling it, this app will handle the Fn shortcuts instead..
         /// </summary>
         public static string SettingsPage_DisableLenovoHotkeys_Message {
             get {
@@ -9067,7 +9183,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Vantage and/or ImController may have not been disabled correctly.
+        ///   Looks up a localized string similar to Lenovo Vantage and/or ImController may not have been disabled correctly.
         /// </summary>
         public static string SettingsPage_DisableVantage_Error_Message {
             get {
@@ -9103,7 +9219,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Legion Space may have not been enabled correctly.
+        ///   Looks up a localized string similar to Legion Space may not have been enabled correctly.
         /// </summary>
         public static string SettingsPage_EnableLegionSpace_Error_Message {
             get {
@@ -9121,7 +9237,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Legion Zone may have not been enabled correctly.
+        ///   Looks up a localized string similar to Legion Zone may not have been enabled correctly.
         /// </summary>
         public static string SettingsPage_EnableLegionZone_Error_Message {
             get {
@@ -9139,7 +9255,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Hotkeys may have not been enabled correctly.
+        ///   Looks up a localized string similar to Lenovo Hotkeys may not have been enabled correctly.
         /// </summary>
         public static string SettingsPage_EnableLenovoHotkeys_Error_Message {
             get {
@@ -9148,7 +9264,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Couldn&apos;t enable Lenovo Hotkeys Keys.
+        ///   Looks up a localized string similar to Couldn&apos;t enable Lenovo Hotkeys.
         /// </summary>
         public static string SettingsPage_EnableLenovoHotkeys_Error_Title {
             get {
@@ -9175,7 +9291,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Lenovo Vantage and/or ImController may have not been enabled correctly.
+        ///   Looks up a localized string similar to Lenovo Vantage and/or ImController may not have been enabled correctly.
         /// </summary>
         public static string SettingsPage_EnableVantage_Error_Message {
             get {
@@ -9238,7 +9354,7 @@ namespace LenovoLegionToolkit.WPF.Resources {
         }
         
         /// <summary>
-        ///   Looks up a localized string similar to Enabling hardware acceleration may cause flickering or black flashes on some hybrid graphics systems, and may prevent the discrete GPU from being turned off..
+        ///   Looks up a localized string similar to Enabling hardware acceleration may prevent the discrete GPU from being turned off..
         /// </summary>
         public static string SettingsPage_HardwareAcceleration_Warning {
             get {
@@ -9279,6 +9395,15 @@ namespace LenovoLegionToolkit.WPF.Resources {
         public static string SettingsPage_HWA_GPUPreference_Auto {
             get {
                 return ResourceManager.GetString("SettingsPage_HWA_GPUPreference_Auto", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Could not apply the GPU preference..
+        /// </summary>
+        public static string SettingsPage_HWA_GPUPreference_Error_Message {
+            get {
+                return ResourceManager.GetString("SettingsPage_HWA_GPUPreference_Error_Message", resourceCulture);
             }
         }
         
@@ -9360,6 +9485,24 @@ namespace LenovoLegionToolkit.WPF.Resources {
         public static string SettingsPage_Language_Title {
             get {
                 return ResourceManager.GetString("SettingsPage_Language_Title", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Fn shortcuts are handled by Lenovo Hotkeys, so Exclude Refresh Rates, Smart Keys and Key Discovery have no effect while it is running..
+        /// </summary>
+        public static string SettingsPage_LenovoHotkeysRunningWarning_Message {
+            get {
+                return ResourceManager.GetString("SettingsPage_LenovoHotkeysRunningWarning_Message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Lenovo Hotkeys is running.
+        /// </summary>
+        public static string SettingsPage_LenovoHotkeysRunningWarning_Title {
+            get {
+                return ResourceManager.GetString("SettingsPage_LenovoHotkeysRunningWarning_Title", resourceCulture);
             }
         }
         
@@ -9900,6 +10043,15 @@ namespace LenovoLegionToolkit.WPF.Resources {
         public static string Snackbar_SettingsApplied_Message {
             get {
                 return ResourceManager.GetString("Snackbar_SettingsApplied_Message", resourceCulture);
+            }
+        }
+        
+        /// <summary>
+        ///   Looks up a localized string similar to Settings were saved but not applied to the GPU..
+        /// </summary>
+        public static string Snackbar_SettingsNotApplied_Message {
+            get {
+                return ResourceManager.GetString("Snackbar_SettingsNotApplied_Message", resourceCulture);
             }
         }
         

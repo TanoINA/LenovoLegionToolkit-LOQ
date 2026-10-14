@@ -24,7 +24,7 @@
 		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
 		<PackageReference Include="Octokit" Version="14.0.0" />
 		<PackageReference Include="TaskScheduler" Version="2.12.2" />
-		<PackageReference Include="LLT.WindowsDisplayAPI" Version="1.3.14-pre.35" />
+		<PackageReference Include="LLT.WindowsDisplayAPI" Version="*-*" />
 		<PackageReference Include="LLT.LibreHardwareMonitorLib" Version="*-*" />
 		<PackageReference Include="LLT.NvAPIWrapper.Net" Version="*-*" />
 		<PackageReference Include="LLT.PresentMonFps" Version="*-*" />
