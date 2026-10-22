@@ -1,4 +1,4 @@
-using System.IO.Pipes;
+﻿using System.IO.Pipes;
 using System.Text;
 using LenovoLegionToolkit.CLI.Lib.Extensions;
 using LenovoLegionToolkit.Lib.System;
@@ -58,6 +58,13 @@ public class InteropHardeningTests
         await cancellation.CancelAsync();
         await Assert.ThrowsExceptionAsync<OperationCanceledException>(async () =>
             await wait.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [TestMethod]
+    public void DeviceInterfaceDetailData_CbSizeMatchesPInvokeExpectation()
+    {
+        var size = (uint)System.Runtime.InteropServices.Marshal.SizeOf<Windows.Win32.Devices.DeviceAndDriverInstallation.SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+        Assert.AreEqual((uint)(IntPtr.Size == 8 ? 8 : 6), size);
     }
 
     private static NamedPipeServerStream CreateServer(string name) =>

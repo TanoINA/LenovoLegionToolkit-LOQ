@@ -21,7 +21,7 @@ namespace LenovoLegionToolkit.WPF.Windows.Automation;
 
 public partial class CreateAutomationPipelineWindow
 {
-    private MachineInformation _machineInformation;
+    private readonly MachineInformation machineInformation = Compatibility.GetMachineInformationAsync().Result;
 
     private List<IAutomationPipelineTrigger> _triggers =
     [
@@ -73,16 +73,10 @@ public partial class CreateAutomationPipelineWindow
         _createPipeline = createPipeline;
 
         InitializeComponent();
-        Loaded += OnLoaded;
-    }
-
-    private async void OnLoaded(object sender, RoutedEventArgs e)
-    {
-        _machineInformation = await Compatibility.GetMachineInformationAsync().ConfigureAwait(true);
 
         var totalAvailableTriggers = _triggers.Count;
 
-        if (_machineInformation.Properties.SupportsITSMode)
+        if (machineInformation.Properties.SupportsITSMode)
         {
             _triggers.Remove(new PowerModeAutomationPipelineTrigger(PowerModeState.Balance));
             _triggers.Remove(new GodModePresetChangedAutomationPipelineTrigger(Guid.Empty));
@@ -92,12 +86,12 @@ public partial class CreateAutomationPipelineWindow
             _triggers.Remove(new ITSModeAutomationPipelineTrigger(ITSMode.ItsAuto));
         }
 
-        if (!_machineInformation.Properties.SupportsGSync && !_machineInformation.Properties.SupportsIGPUMode)
+        if (!machineInformation.Properties.SupportsGSync && !machineInformation.Properties.SupportsIGPUMode)
         {
             _triggers.Remove(new HybridModeAutomationPipelineTrigger(HybridModeState.On));
         }
 
-        if (_machineInformation.LegionSeries > LegionSeries.Legion_Legacy)
+        if (machineInformation.LegionSeries > LegionSeries.Legion_Legacy)
         {
             _triggers.Remove(new LowWattageACAdapterConnectedAutomationPipelineTrigger());
         }
