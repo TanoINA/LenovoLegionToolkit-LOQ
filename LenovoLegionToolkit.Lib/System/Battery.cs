@@ -17,7 +17,7 @@ public static class Battery
     private static int MaxDischargeRate { get; set; }
 
     // BATTERY_STATUS.Rate sentinel for "unknown" (0x80000000 == int.MinValue); Math.Abs on it overflows.
-    private const int BATTERY_UNKNOWN_RATE = unchecked((int)0x80000000);
+    // BATTERY_STATUS.Rate sentinel for unknown is int.MinValue (0x80000000).
 
     public static void SetMinMaxDischargeRate(BATTERY_STATUS? status = null)
     {
@@ -27,8 +27,10 @@ public static class Battery
             status = GetBatteryStatus(batteryTag);
         }
 
-        if (status.Value.Rate == BATTERY_UNKNOWN_RATE)
+        if (status.Value.Rate == int.MinValue)
+        {
             return;
+        }
 
         if (status.Value.Rate == 0
             || (status.Value.Rate > 0 && (MinDischargeRate < 0 || MaxDischargeRate < 0))
@@ -40,7 +42,7 @@ public static class Battery
 
         if (status.Value.Rate != 0)
         {
-            if (Math.Abs(status.Value.Rate) < Math.Abs(MinDischargeRate))
+            if (MaxDischargeRate == 0 || Math.Abs(status.Value.Rate) < Math.Abs(MinDischargeRate))
                 MinDischargeRate = status.Value.Rate;
             if (Math.Abs(status.Value.Rate) > Math.Abs(MaxDischargeRate))
                 MaxDischargeRate = status.Value.Rate;
@@ -54,7 +56,6 @@ public static class Battery
         var batteryTag = GetBatteryTag();
         var information = GetBatteryInformation(batteryTag);
         var status = GetBatteryStatus(batteryTag);
-        var rate = status.Rate == BATTERY_UNKNOWN_RATE ? 0 : status.Rate;
 
         double? temperatureC = null;
         DateTime? manufactureDate = null;
@@ -81,8 +82,8 @@ public static class Battery
             powerStatus.BatteryLifePercent,
             (int)powerStatus.BatteryLifeTime,
             (int)powerStatus.BatteryFullLifeTime,
-            rate,
-            (rate == 0) ? 0 : MinDischargeRate,
+            status.Rate,
+            (status.Rate == 0 || status.Rate == int.MinValue) ? 0 : MinDischargeRate,
             MaxDischargeRate,
             (int)status.Capacity,
             (int)information.DesignedCapacity,
@@ -114,7 +115,7 @@ public static class Battery
         {
             var batteryTag = GetBatteryTag();
             var rate = GetBatteryStatus(batteryTag).Rate;
-            if (rate == BATTERY_UNKNOWN_RATE)
+            if (rate == int.MinValue)
                 return null;
 
             Log.Instance.Trace($"Battery rate = {rate} mW");

@@ -64,6 +64,7 @@ public enum CapabilityID
     NvidiaGPUDynamicDisplaySwitching = 0x00040000,
     AMDSmartShiftMode = 0x00050001,
     AMDSkinTemperatureTracking = 0x00050002,
+    PowerLedBrightness = 0x0006040000,
     SupportedPowerModes = 0x00070000,
     LegionZoneSupportVersion = 0x00090000,
     AutoSwitchRefreshRate = 0x000A0000,
@@ -154,6 +155,20 @@ public enum DriverKey
     FnF4 = 256,
     FnF8 = 8192,
     FnSpace = 4096,
+}
+
+internal enum DytcFunction : uint
+{
+    FirmwareDefault = 0,
+    Manual = 3,
+    Unknown4 = 4,
+    IntelligentCooling = 5,
+    Auto_UnknownFunction6 = 6,
+    Auto_UnknownFunction7 = 7,
+    Auto_UnknownFunction8 = 8,
+    ItsModeControl = 11,
+    Auto_UnknownFunction13 = 13,
+    Auto_UnknownFunction15 = 15,
 }
 
 public enum FanState
@@ -433,12 +448,9 @@ public enum NativeWindowsMessage
     MonitorOff,
     DeviceConnected,
     DeviceDisconnected,
-    MonitorConnected,
-    MonitorDisconnected,
     ExternalMonitorConnected,
     ExternalMonitorDisconnected,
-    DisplayDeviceChanged,
-    BatterySaverEnabled
+    DisplayDeviceChanged
 }
 
 public enum NonGamingCapabilityID
@@ -1065,7 +1077,9 @@ public enum WhiteKeyboardBacklightState
     [Display(ResourceType = typeof(Resource), Name = "WhiteKeyboardBacklightState_Low")]
     Low,
     [Display(ResourceType = typeof(Resource), Name = "WhiteKeyboardBacklightState_High")]
-    High
+    High,
+    [Display(ResourceType = typeof(Resource), Name = "WhiteKeyboardBacklightState_Auto")]
+    Auto
 }
 
 public enum WindowBackdropType

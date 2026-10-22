@@ -116,6 +116,11 @@ public class DriverKeyListener(
             {
                 if (!value.HasFlag(flag))
                     continue;
+                if (flag is DriverKey.FnF10 && touchpadLockWmiFeature.ConsumeExpectedEcho())
+                {
+                    Log.Instance.Trace($"Suppressed. [key={flag}]");
+                    continue;
+                }
                 if (CustomKeyHandler is not null && await CustomKeyHandler(flag).ConfigureAwait(false))
                     continue;
                 await RunBuiltInAsync(flag).ConfigureAwait(false);

@@ -45,14 +45,14 @@ public class PowerModeListener(
 
     public Task NotifyAsync(PowerModeState value)
     {
-        return ProcessChangeAsync(value, force: true);
+        return ProcessChangeAsync(value, force: true, showNotification: false);
     }
 
     public Task ChangeAsync(PowerModeState value, Func<Task> change, bool applyGodModePreset = true) =>
-        ProcessChangeAsync(value, change, applyGodModePreset, force: true);
+        ProcessChangeAsync(value, change, applyGodModePreset, force: true, showNotification: false);
 
     private async Task ProcessChangeAsync(PowerModeState value, Func<Task>? change = null,
-        bool applyGodModePreset = true, bool force = false)
+        bool applyGodModePreset = true, bool force = false, bool showNotification = true)
     {
         await _changeLock.WaitAsync().ConfigureAwait(false);
         try
@@ -68,7 +68,11 @@ public class PowerModeListener(
                 await change().ConfigureAwait(false);
             }
 
-            PublishNotification(value);
+            if (showNotification)
+            {
+                PublishNotification(value);
+            }
+
             await ChangeDependenciesAsync(value, applyGodModePreset).ConfigureAwait(false);
             RaiseChanged(value);
             _lastState = value;
@@ -117,8 +121,8 @@ public class PowerModeListener(
             Log.Instance.Trace($"RestoreDefaultsInOtherPowerModeAsync completed [elapsed={restSw.ElapsedMilliseconds}ms]");
         }
 
-        await windowsPowerModeController.SetPowerModeAsync(value).ConfigureAwait(false);
-        await windowsPowerPlanController.SetPowerPlanAsync(value).ConfigureAwait(false);
+        await windowsPowerModeController.SetPowerModeAsync(value, skipThrottle: true).ConfigureAwait(false);
+        await windowsPowerPlanController.SetPowerPlanAsync(value, skipThrottle: true).ConfigureAwait(false);
 
         var gpuOverclockController = IoCContainer.Resolve<GPUOverclockController>();
         Log.Instance.Trace($"Checking GPUOverclock IsSupportedAsync...");

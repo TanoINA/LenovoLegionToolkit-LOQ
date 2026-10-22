@@ -38,7 +38,6 @@ public class ITSModeControl : AbstractComboBoxFeatureCardControl<ITSMode>
         AutomationProperties.SetName(_configButton, Resource.ITSModeControl_Title);
         _configButton.Click += ConfigButton_Click;
 
-        IsVisibleChanged += ITSModeControl_IsVisibleChanged;
         _iTSModeListener.Changed += ITSModeListener_Changed;
     }
 
@@ -69,37 +68,6 @@ public class ITSModeControl : AbstractComboBoxFeatureCardControl<ITSMode>
         catch (Exception ex)
         {
             Log.Instance.Trace($"ITSModeControl: unhandled exception in ITSModeListener_Changed.", ex);
-        }
-    }
-
-    private async void ITSModeControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
-    {
-        try
-        {
-            if (!await _itsModeFeature.IsSupportedAsync().ConfigureAwait(false))
-            {
-                return;
-            }
-
-            ITSMode mode;
-            if (_itsModeFeature.LastItsMode == ITSMode.None)
-            {
-                mode = await _itsModeFeature.GetStateAsync();
-                _itsModeFeature.LastItsMode = mode;
-                Log.Instance.Trace($"Read ITSMode from GetStateAsync(): {mode}");
-            }
-            else
-            {
-                mode = _itsModeFeature.LastItsMode;
-                Log.Instance.Trace($"Read ITSMode from LastItsMode: {mode}");
-            }
-
-            Log.Instance.Trace($"Visible changed. Set ITSMode to {mode}");
-            _comboBox.SelectedItem = mode;
-        }
-        catch (Exception ex)
-        {
-            Log.Instance.Trace($"ITSModeControl: unhandled exception in IsVisibleChanged.", ex);
         }
     }
 

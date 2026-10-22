@@ -28,7 +28,7 @@ public class PowerModeFeature(
     : AbstractWmiFeature<PowerModeState>(WMI.LenovoGameZoneData.GetSmartFanModeAsync, WMI.LenovoGameZoneData.SetSmartFanModeAsync, WMI.LenovoGameZoneData.IsSupportSmartFanAsync, 1)
 {
     public bool AllowAllPowerModesOnBattery { get; set; }
-    public PowerModeState LastPowerModeState { get; set; }
+    public PowerModeState? LastPowerModeState { get; set; }
 
     public override async Task<PowerModeState[]> GetAllStatesAsync()
     {
@@ -124,6 +124,15 @@ public class PowerModeFeature(
 
     public async Task EnsureCorrectWindowsPowerSettingsAreSetAsync(GodModeSettingsStore.Preset? preset = null, bool skipThrottle = false, SoftwareStatus? vantageStatus = null)
     {
+        var machineInfo = await Compatibility.GetMachineInformationAsync().ConfigureAwait(false);
+        if (machineInfo.Properties.GodModePlatform == GodModePlatform.NonGaming)
+        {
+            var itsMode = await IoCContainer.Resolve<ITSModeFeature>().GetStateAsync().ConfigureAwait(false);
+            await windowsPowerModeController.SetPowerModeAsync(itsMode, skipThrottle, preset).ConfigureAwait(false);
+            await windowsPowerPlanController.SetPowerPlanAsync(itsMode, true, skipThrottle, preset, vantageStatus).ConfigureAwait(false);
+            return;
+        }
+
         var state = await GetStateAsync().ConfigureAwait(false);
         await windowsPowerModeController.SetPowerModeAsync(state, preset, skipThrottle).ConfigureAwait(false);
         await windowsPowerPlanController.SetPowerPlanAsync(state, true, preset, skipThrottle, vantageStatus).ConfigureAwait(false);

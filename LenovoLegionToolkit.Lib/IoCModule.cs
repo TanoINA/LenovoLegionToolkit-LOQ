@@ -58,6 +58,7 @@ public class IoCModule : Module
         builder.Register<AlwaysOnUSBFeature>();
         builder.Register<BatteryFeature>();
         builder.Register<BatteryNightChargeFeature>();
+        builder.Register<ChargeThresholdFeature>();
         builder.Register<DpiScaleFeature>();
         builder.Register<FlipToStartFeature>();
         builder.Register<FlipToStartCapabilityFeature>(true);
@@ -145,6 +146,7 @@ public class IoCModule : Module
         builder.Register<SensorsGroupController>(true);
         builder.Register<SmartFnLockController>();
         builder.Register<SpectrumKeyboardBacklightController>();
+        builder.Register<PowerButtonLedController>();
         builder.Register<WindowsPowerModeController>();
         builder.Register<WindowsPowerPlanController>();
         builder.Register<FpsSensorController>();
