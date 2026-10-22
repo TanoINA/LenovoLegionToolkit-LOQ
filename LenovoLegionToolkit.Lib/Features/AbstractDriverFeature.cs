@@ -67,6 +67,7 @@ public abstract class AbstractDriverFeature<T>(
     public virtual async Task SetStateAsync(T state, bool verify)
     {
         _lastSetCts?.Cancel();
+        _lastSetCts?.Dispose();
         _lastSetCts = new CancellationTokenSource();
         var ct = _lastSetCts.Token;
 

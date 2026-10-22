@@ -132,9 +132,9 @@ public class PowerModeListener(
             CancellationToken token;
             lock (_overclockLock)
             {
+                _overclockCts?.Cancel();
                 try
                 {
-                    _overclockCts?.Cancel();
                     _overclockCts?.Dispose();
                 }
                 catch (ObjectDisposedException) { }

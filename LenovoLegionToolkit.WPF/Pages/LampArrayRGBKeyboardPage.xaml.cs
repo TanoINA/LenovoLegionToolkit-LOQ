@@ -182,6 +182,10 @@ public partial class LampArrayRGBKeyboardPage : UiPage
 
         _controller.SaveSettings(_settings);
         StopScreenCapture();
+
+        _probeCts?.Cancel();
+        _probeCts?.Dispose();
+        _probeCts = null;
     }
 
     private void CalculateAuroraBounds()
@@ -247,6 +251,7 @@ public partial class LampArrayRGBKeyboardPage : UiPage
     private void StopScreenCapture()
     {
         _screenCaptureCts?.Cancel();
+        _screenCaptureCts?.Dispose();
         _screenCaptureCts = null;
     }
 
@@ -761,6 +766,7 @@ public partial class LampArrayRGBKeyboardPage : UiPage
     private void CancelProbe(Button btn)
     {
         _probeCts?.Cancel();
+        _probeCts?.Dispose();
         _probeCts = null;
         btn.Content = Resource.LampArrayRGBKeyboardPage_Probe_Indices;
 

@@ -502,20 +502,28 @@ public sealed class AmdOverclockingController : IDisposable
 
     public bool SwitchProfile(CpuProfileMode mode)
     {
-        EnsureInitialized();
-
-        if (_cachedDowncoreCmd == null)
+        _lock.Wait();
+        try
         {
-            Log.Instance.Trace($"Downcore command not supported on this system.");
-            return false;
+            EnsureInitialized();
+
+            if (_cachedDowncoreCmd == null)
+            {
+                Log.Instance.Trace($"Downcore command not supported on this system.");
+                return false;
+            }
+
+            uint subCommand = mode == CpuProfileMode.X3DGaming ? DOWNCORE_CCD1_DISABLE_ALL : DOWNCORE_CCD1_ENABLE_ALL;
+
+            WMI.RunCommand(_classInstance, _cachedDowncoreCmd.Value.Id, DOWNCORE_CMD_DEFAULT);
+            WMI.RunCommand(_classInstance, _cachedDowncoreCmd.Value.Id, subCommand);
+
+            return true;
         }
-
-        uint subCommand = mode == CpuProfileMode.X3DGaming ? DOWNCORE_CCD1_DISABLE_ALL : DOWNCORE_CCD1_ENABLE_ALL;
-
-        WMI.RunCommand(_classInstance, _cachedDowncoreCmd.Value.Id, DOWNCORE_CMD_DEFAULT);
-        WMI.RunCommand(_classInstance, _cachedDowncoreCmd.Value.Id, subCommand);
-
-        return true;
+        finally
+        {
+            _lock.Release();
+        }
     }
 
     [MemberNotNull(nameof(_cpu), nameof(_machineInformation), nameof(_classInstance))]

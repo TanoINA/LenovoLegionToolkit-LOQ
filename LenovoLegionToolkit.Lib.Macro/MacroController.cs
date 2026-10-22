@@ -11,7 +11,7 @@ using LenovoLegionToolkit.Lib.Macro.Utils;
 
 namespace LenovoLegionToolkit.Lib.Macro;
 
-public class MacroController
+public class MacroController : IDisposable
 {
     public class RecorderReceivedEventArgs : EventArgs
     {
@@ -168,5 +168,15 @@ public class MacroController
         }
 
         return sequence with { Events = [.. macroEvents] };
+    }
+
+    public void Dispose()
+    {
+        if (_kbHook != default)
+        {
+            PInvoke.UnhookWindowsHookEx(_kbHook);
+            _kbHook = default;
+        }
+        _recorder.StopRecording();
     }
 }

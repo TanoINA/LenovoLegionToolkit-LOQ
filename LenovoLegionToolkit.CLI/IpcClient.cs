@@ -151,7 +151,9 @@ public static class IpcClient
         await ConnectAsync(pipe).ConfigureAwait(false);
 
         await pipe.WriteObjectAsync(req).ConfigureAwait(false);
-        var res = await pipe.ReadObjectAsync<IpcResponse>().ConfigureAwait(false);
+
+        using var readTimeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(30));
+        var res = await pipe.ReadObjectAsync<IpcResponse>(readTimeoutCts.Token).ConfigureAwait(false);
 
         if (res is null || !res.Success)
             throw new IpcException(res?.Message ?? "Unknown failure");

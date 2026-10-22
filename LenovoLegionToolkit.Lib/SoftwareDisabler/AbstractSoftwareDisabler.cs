@@ -211,20 +211,23 @@ public abstract class AbstractSoftwareDisabler
     {
         foreach (var process in Process.GetProcesses())
         {
-            foreach (var processName in ProcessNames)
+            using (process)
             {
-                var name = string.Empty;
-
-                try
+                foreach (var processName in ProcessNames)
                 {
-                    name = process.ProcessName;
-                    if (!name.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
-                        continue;
-                }
-                catch {  /* Ignore */ }
+                    var name = string.Empty;
 
-                if (!string.IsNullOrEmpty(name))
-                    yield return name;
+                    try
+                    {
+                        name = process.ProcessName;
+                        if (!name.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
+                            continue;
+                    }
+                    catch {  /* Ignore */ }
+
+                    if (!string.IsNullOrEmpty(name))
+                        yield return name;
+                }
             }
         }
     }
@@ -498,23 +501,28 @@ public abstract class AbstractSoftwareDisabler
     protected virtual async Task KillProcessesAsync()
     {
         foreach (var process in Process.GetProcesses())
-            foreach (var processName in ProcessNames)
+        {
+            using (process)
             {
-                try
+                foreach (var processName in ProcessNames)
                 {
-                    if (process.ProcessName.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
+                    try
                     {
-                        process.Kill(true);
+                        if (process.ProcessName.StartsWith(processName, StringComparison.InvariantCultureIgnoreCase))
+                        {
+                            process.Kill(true);
 
-                        using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(5));
+                            using var cancellationTokenSource = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
-                        await process.WaitForExitAsync(cancellationTokenSource.Token).ConfigureAwait(false);
+                            await process.WaitForExitAsync(cancellationTokenSource.Token).ConfigureAwait(false);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log.Instance.Trace($"Couldn't kill process.", ex);
                     }
                 }
-                catch (Exception ex)
-                {
-                    Log.Instance.Trace($"Couldn't kill process.", ex);
-                }
             }
+        }
     }
 }

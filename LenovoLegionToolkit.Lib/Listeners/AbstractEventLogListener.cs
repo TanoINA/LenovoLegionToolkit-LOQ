@@ -5,9 +5,10 @@ using LenovoLegionToolkit.Lib.Utils;
 
 namespace LenovoLegionToolkit.Lib.Listeners;
 
-public abstract class AbstractEventLogListener : IListener<EventArgs>
+public abstract class AbstractEventLogListener : IListener<EventArgs>, IDisposable
 {
     private readonly EventLogWatcher _watcher;
+    private bool _disposed;
 
     public AbstractEventLogListener(string path, string query)
     {
@@ -45,5 +46,17 @@ public abstract class AbstractEventLogListener : IListener<EventArgs>
         {
             Log.Instance.Trace($"Failed to handle event.  [listener={GetType().Name}]", ex);
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+
+        _watcher.Enabled = false;
+        _watcher.EventRecordWritten -= Watcher_EventRecordWritten;
+        _watcher.Dispose();
+
+        GC.SuppressFinalize(this);
     }
 }

@@ -73,10 +73,10 @@ internal class MacroRecorder
 
         var wasInterrupted = _interrupted;
 
-        SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
-
         PInvoke.UnhookWindowsHookEx(_kbHook);
         PInvoke.UnhookWindowsHookEx(_mouseHook);
+
+        SystemEvents.SessionSwitch -= SystemEvents_SessionSwitch;
 
         _kbHook = default;
         _mouseHook = default;

@@ -87,26 +87,33 @@ public partial class ITSModeFeature : IFeature<ITSMode>
         }
         catch (Exception ex)
         {
-            Log.Instance.Trace($"Error handling ITS mode toggle request", ex);
+            Log.Instance.Trace($"Unhandled exception in OnToggleRequestAsync", ex);
         }
     }
 
     private async void OnPowerChanged(object? sender, PowerListener.ChangedEventArgs e)
     {
-        Log.Instance.Trace($"Power overlay changed: AC={e.ActiveOverlayAc}, DC={e.ActiveOverlayDc}, Plan={e.ActivePowerPlan}");
-
-        // Atomic claim: only one of (OnPowerChanged, WaitForOverlayOrTimeoutAsync)
-        // may clear the pending flag and trigger ApplyPowerChanges.
-        if (Interlocked.Exchange(ref _pendingOverlaySync, 0) == 0)
+        try
         {
-            return;
+            Log.Instance.Trace($"Power overlay changed: AC={e.ActiveOverlayAc}, DC={e.ActiveOverlayDc}, Plan={e.ActivePowerPlan}");
+
+            // Atomic claim: only one of (OnPowerChanged, WaitForOverlayOrTimeoutAsync)
+            // may clear the pending flag and trigger ApplyPowerChanges.
+            if (Interlocked.Exchange(ref _pendingOverlaySync, 0) == 0)
+            {
+                return;
+            }
+
+            // SetStateAsync may dispose/replace the CTS concurrently; a late cancel on a disposed CTS is harmless.
+            try { _overlayTimeoutCts?.Cancel(); }
+            catch (ObjectDisposedException) { }
+
+            await ApplyPowerChanges().ConfigureAwait(false);
         }
-
-        // SetStateAsync may dispose/replace the CTS concurrently; a late cancel on a disposed CTS is harmless.
-        try { _overlayTimeoutCts?.Cancel(); }
-        catch (ObjectDisposedException) { }
-
-        await ApplyPowerChanges().ConfigureAwait(false);
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Unhandled exception in OnPowerChanged", ex);
+        }
     }
 
     private void SaveCurrentStateToSettings(ITSMode state)
@@ -713,8 +720,11 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
     private void ScheduleOverlaySync()
     {
-        _overlayTimeoutCts?.Cancel();
-        _overlayTimeoutCts?.Dispose();
+        var old = _overlayTimeoutCts;
+        _overlayTimeoutCts = null;
+        
+        old?.Cancel();
+        old?.Dispose();
 
         var cts = new CancellationTokenSource();
         _overlayTimeoutCts = cts;

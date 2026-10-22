@@ -170,6 +170,8 @@ public class LampArrayController : IDisposable
     private void StartRenderLoop()
     {
         if (_renderCts != null) return;
+        _renderCts?.Cancel();
+        _renderCts?.Dispose();
         _renderCts = new CancellationTokenSource();
         var token = _renderCts.Token;
         Task.Run(async () =>
@@ -193,6 +195,7 @@ public class LampArrayController : IDisposable
     private void StopRenderLoop()
     {
         _renderCts?.Cancel();
+        _renderCts?.Dispose();
         _renderCts = null;
         StopScreenCapture();
     }
@@ -265,6 +268,8 @@ public class LampArrayController : IDisposable
     {
         if (_screenCaptureCts != null || _screenCaptureProvider == null) return;
 
+        _screenCaptureCts?.Cancel();
+        _screenCaptureCts?.Dispose();
         _screenCaptureCts = new CancellationTokenSource();
         var token = _screenCaptureCts.Token;
 
@@ -296,6 +301,7 @@ public class LampArrayController : IDisposable
     private void StopScreenCapture()
     {
         _screenCaptureCts?.Cancel();
+        _screenCaptureCts?.Dispose();
         _screenCaptureCts = null;
     }
 
@@ -724,7 +730,10 @@ public class LampArrayController : IDisposable
 
         _isDisposed = true;
 
-        StopRenderLoop();
+        _renderCts?.Cancel();
+        _renderCts?.Dispose();
+        _screenCaptureCts?.Cancel();
+        _screenCaptureCts?.Dispose();
 
         _watcher?.Stop();
         _watcher = null;

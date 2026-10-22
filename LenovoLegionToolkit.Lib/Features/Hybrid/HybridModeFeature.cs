@@ -10,7 +10,7 @@ using LenovoLegionToolkit.Lib.Utils;
 
 namespace LenovoLegionToolkit.Lib.Features.Hybrid;
 
-public class HybridModeFeature(GSyncFeature gSyncFeature, IGPUModeFeature igpuModeFeature, DGPUNotify dgpuNotify, BiosHybridModeFeature biosHybridMode) : IFeature<HybridModeState>
+public class HybridModeFeature(GSyncFeature gSyncFeature, IGPUModeFeature igpuModeFeature, DGPUNotify dgpuNotify, BiosHybridModeFeature biosHybridMode) : IFeature<HybridModeState>, IDisposable
 {
     private readonly CancellationTokenSource _ensureDGPUEjectedIfNeededCancellationTokenSource = new();
     private int _isEnsuringEjected;
@@ -278,4 +278,10 @@ public class HybridModeFeature(GSyncFeature gSyncFeature, IGPUModeFeature igpuMo
         (GSyncState.On, _) => HybridModeState.Off,
         _ => throw new InvalidOperationException("Invalid state"),
     };
+
+    public void Dispose()
+    {
+        _ensureDGPUEjectedIfNeededCancellationTokenSource?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

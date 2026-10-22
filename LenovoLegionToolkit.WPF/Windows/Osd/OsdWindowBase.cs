@@ -428,7 +428,7 @@ public abstract class OsdWindowBase : Window
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _sessionListener.Changed -= OnSessionLockStateChanged;
 
-        StopSensorLoopAsync().GetAwaiter().GetResult();
+        _ = StopSensorLoopAsync();
         _refreshLock.Dispose();
 
         _fpsController.FpsDataUpdated -= OnFpsDataUpdated;

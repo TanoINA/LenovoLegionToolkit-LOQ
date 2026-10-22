@@ -257,9 +257,12 @@ public partial class SensorsControlV2
 
     private void StopSensorUpdates()
     {
-        _sensorStartCts?.Cancel();
-        _sensorStartCts?.Dispose();
-        _sensorStartCts = null;
+        if (_sensorStartCts is not null)
+        {
+            _sensorStartCts.Cancel();
+            _sensorStartCts.Dispose();
+            _sensorStartCts = null;
+        }
         _sensorSubscription?.Dispose();
         _sensorSubscription = null;
         _sensorsGroupControllers.SensorsUpdated -= OnSensorsUpdated;

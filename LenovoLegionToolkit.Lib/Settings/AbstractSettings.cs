@@ -89,11 +89,14 @@ public abstract class AbstractSettings<T> where T : class, new()
 
     public void SynchronizeStore()
     {
+        // Read Store once outside the lock to avoid holding lock during serialization,
+        // but note: caller must ensure Store is not mutated during this call.
+        var storeSnapshot = Store;
         lock (_saveLock)
         {
             try
             {
-                var settingsSerialized = JsonConvert.SerializeObject(Store, JsonSerializerSettings);
+                var settingsSerialized = JsonConvert.SerializeObject(storeSnapshot, JsonSerializerSettings);
                 Folders.EnsureParentDirectoryExists(_settingsStorePath);
                 WriteAllTextAtomic(settingsSerialized);
             }

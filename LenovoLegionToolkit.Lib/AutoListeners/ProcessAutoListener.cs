@@ -135,6 +135,7 @@ public class ProcessAutoListener(
 
         Log.Instance.Trace($"Cleaning up process cache. Current size: {_processCache.Count}.");
 
+        var deadIds = new List<int>();
         foreach (var (processId, _) in _processCache)
         {
             try
@@ -143,8 +144,13 @@ public class ProcessAutoListener(
             }
             catch (ArgumentException)
             {
-                _processCache.Remove(processId);
+                deadIds.Add(processId);
             }
+        }
+
+        foreach (var id in deadIds)
+        {
+            _processCache.Remove(id);
         }
 
         Log.Instance.Trace($"Cleaned up process cache. Current size: {_processCache.Count}.");

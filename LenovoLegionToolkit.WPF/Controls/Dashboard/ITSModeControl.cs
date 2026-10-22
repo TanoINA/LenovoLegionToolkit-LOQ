@@ -38,7 +38,19 @@ public class ITSModeControl : AbstractComboBoxFeatureCardControl<ITSMode>
         AutomationProperties.SetName(_configButton, Resource.ITSModeControl_Title);
         _configButton.Click += ConfigButton_Click;
 
+        Loaded += ITSModeControl_Loaded;
+        Unloaded += ITSModeControl_Unloaded;
+    }
+
+    private void ITSModeControl_Loaded(object sender, RoutedEventArgs e)
+    {
+        _iTSModeListener.Changed -= ITSModeListener_Changed;
         _iTSModeListener.Changed += ITSModeListener_Changed;
+    }
+
+    private void ITSModeControl_Unloaded(object sender, RoutedEventArgs e)
+    {
+        _iTSModeListener.Changed -= ITSModeListener_Changed;
     }
 
     protected override FrameworkElement GetAccessory(ComboBox comboBox)

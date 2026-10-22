@@ -44,6 +44,8 @@ public partial class DashboardPage
                 RefreshSensorControl();
             });
         });
+
+        Unloaded += (_, _) => MessagingCenter.Unsubscribe(this);
     }
 
     private void RefreshSensorControl()

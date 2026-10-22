@@ -82,6 +82,7 @@ public abstract partial class AbstractDGPUNotify : IDGPUNotify
         lock (_lock)
         {
             _notifyLaterCancellationTokenSource?.Cancel();
+            _notifyLaterCancellationTokenSource?.Dispose();
             _notifyLaterCancellationTokenSource = new();
 
             token = _notifyLaterCancellationTokenSource.Token;

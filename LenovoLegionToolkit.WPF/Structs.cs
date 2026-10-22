@@ -92,11 +92,23 @@ public class AmdCoreItem : INotifyPropertyChanged
 
 public readonly struct DashboardGroup(DashboardGroupType type, string? customName, params DashboardItem[] items)
 {
-    public static DashboardGroup[] DefaultGroups => GetDefaultGroups();
+    private static DashboardGroup[]? _cachedDefaultGroups;
 
-    private static DashboardGroup[] GetDefaultGroups()
+    public static DashboardGroup[] DefaultGroups
     {
-        var mi = Compatibility.GetMachineInformationAsync().Result;
+        get
+        {
+            if (_cachedDefaultGroups is null)
+            {
+                var mi = Compatibility.GetMachineInformationAsync().GetAwaiter().GetResult();
+                _cachedDefaultGroups = BuildDefaultGroups(mi);
+            }
+            return _cachedDefaultGroups;
+        }
+    }
+
+    private static DashboardGroup[] BuildDefaultGroups(MachineInformation mi)
+    {
         var groups = new List<DashboardGroup>
         {
             new(DashboardGroupType.Power, null,

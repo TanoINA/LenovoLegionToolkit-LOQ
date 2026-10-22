@@ -98,6 +98,7 @@ public class GPUController
         await _refreshGate.WaitAsync().ConfigureAwait(false);
         _refreshGate.Release();
 
+        _refreshCancellationTokenSource.Dispose();
         _refreshCancellationTokenSource = null;
     }
 
@@ -158,6 +159,10 @@ public class GPUController
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Couldn't kill process. [pid={process.Id}, name={process.ProcessName}]", ex);
+            }
+            finally
+            {
+                process.Dispose();
             }
         }
     }

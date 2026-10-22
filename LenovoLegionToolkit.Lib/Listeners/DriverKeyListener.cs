@@ -63,9 +63,9 @@ public class DriverKeyListener(
 
     private async Task HandlerAsync(CancellationToken token)
     {
+        using var resetEvent = new ManualResetEvent(false);
         try
         {
-            var resetEvent = new ManualResetEvent(false);
             var setHandleResult = BindListener(resetEvent);
             if (!setHandleResult)
                 PInvokeExtensions.ThrowIfWin32Error("DeviceIoControl, setHandleResult");

@@ -192,7 +192,7 @@ public static class Devices
             {
                 output = Marshal.AllocHGlobal((int)requiredSize);
                 var deviceDetailData = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)output.ToPointer();
-                deviceDetailData->cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+                deviceDetailData->cbSize = (uint)(IntPtr.Size + 2);
 
                 var result3 = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, deviceDetailData, requiredSize, null, null);
                 if (!result3)
@@ -342,7 +342,7 @@ public static class Devices
             {
                 output = Marshal.AllocHGlobal((int)requiredSize);
                 var deviceDetailData = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)output.ToPointer();
-                deviceDetailData->cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+                deviceDetailData->cbSize = (uint)(IntPtr.Size + 2);
 
                 var result3 = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, deviceDetailData, requiredSize, null, null);
                 if (!result3)
@@ -441,7 +441,7 @@ public static class Devices
             {
                 output = Marshal.AllocHGlobal((int)requiredSize);
                 var deviceDetailData = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)output.ToPointer();
-                deviceDetailData->cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+                deviceDetailData->cbSize = (uint)(IntPtr.Size + 2);
 
                 var result3 = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, deviceDetailData, requiredSize, null, null);
                 if (!result3)
