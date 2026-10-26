@@ -104,22 +104,28 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
 
         var cpuUtilization = GetCpuUtilization(genericMaxUtilization);
 
-        var cpuMaxCoreClock = _cpuMaxCoreClockCache ??= await GetCpuMaxCoreClockAsync().ConfigureAwait(false);
+        var cpuMaxCoreClock = await GetCachedSensorValueAsync(GetCpuMaxCoreClockAsync,
+            _cpuMaxCoreClockCache, value => _cpuMaxCoreClockCache = value).ConfigureAwait(false);
         var cpuCoreClock = GetCpuCoreClock();
-        var cpuCurrentTemperature = await GetCpuCurrentTemperatureAsync().ConfigureAwait(false);
-        var cpuCurrentFanSpeed = await GetCpuCurrentFanSpeedAsync().ConfigureAwait(false);
-        var cpuMaxFanSpeed = _cpuMaxFanSpeedCache ??= await GetCpuMaxFanSpeedAsync().ConfigureAwait(false);
+        var cpuCurrentTemperature = await QuerySensorValueAsync(GetCpuCurrentTemperatureAsync).ConfigureAwait(false);
+        var cpuCurrentFanSpeed = await QuerySensorValueAsync(GetCpuCurrentFanSpeedAsync).ConfigureAwait(false);
+        var cpuMaxFanSpeed = await GetCachedSensorValueAsync(GetCpuMaxFanSpeedAsync,
+            _cpuMaxFanSpeedCache, value => _cpuMaxFanSpeedCache = value).ConfigureAwait(false);
 
-        var gpuInfo = await GetGPUInfoAsync().ConfigureAwait(false);
-        var gpuCurrentTemperature = gpuInfo.Temperature >= 0 ? gpuInfo.Temperature : await GetGpuCurrentTemperatureAsync().ConfigureAwait(false);
+        var gpuInfo = await QueryGpuInfoAsync().ConfigureAwait(false);
+        var gpuCurrentTemperature = gpuInfo.Temperature >= 0
+            ? gpuInfo.Temperature
+            : await QuerySensorValueAsync(GetGpuCurrentTemperatureAsync).ConfigureAwait(false);
         var gpuMaxTemperature = gpuInfo.MaxTemperature >= 0 ? gpuInfo.MaxTemperature : genericMaxTemperature;
-        var gpuCurrentFanSpeed = await GetGpuCurrentFanSpeedAsync().ConfigureAwait(false);
-        var gpuMaxFanSpeed = _gpuMaxFanSpeedCache ??= await GetGpuMaxFanSpeedAsync().ConfigureAwait(false);
+        var gpuCurrentFanSpeed = await QuerySensorValueAsync(GetGpuCurrentFanSpeedAsync).ConfigureAwait(false);
+        var gpuMaxFanSpeed = await GetCachedSensorValueAsync(GetGpuMaxFanSpeedAsync,
+            _gpuMaxFanSpeedCache, value => _gpuMaxFanSpeedCache = value).ConfigureAwait(false);
 
-        var pchCurrentTemperature = await GetPchCurrentTemperatureAsync().ConfigureAwait(false);
+        var pchCurrentTemperature = await QuerySensorValueAsync(GetPchCurrentTemperatureAsync).ConfigureAwait(false);
         var pchMaxTemperature = genericMaxTemperature;
-        var pchCurrentFanSpeed = await GetPchCurrentFanSpeedAsync().ConfigureAwait(false);
-        var pchMaxFanSpeed = _pchMaxFanSpeedCache ??= await GetPchMaxFanSpeedAsync().ConfigureAwait(false);
+        var pchCurrentFanSpeed = await QuerySensorValueAsync(GetPchCurrentFanSpeedAsync).ConfigureAwait(false);
+        var pchMaxFanSpeed = await GetCachedSensorValueAsync(GetPchMaxFanSpeedAsync,
+            _pchMaxFanSpeedCache, value => _pchMaxFanSpeedCache = value).ConfigureAwait(false);
 
         var cpu = new SensorData(cpuUtilization,
             genericMaxUtilization,
@@ -158,6 +164,47 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
         var result = new SensorsData(cpu, gpu, pch);
 
         return result;
+    }
+
+    private async Task<GPUInfo> QueryGpuInfoAsync()
+    {
+        try
+        {
+            return await GetGPUInfoAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            // GPU power-state/NVAPI failures must not discard valid CPU and PCH data.
+            Log.Instance.Trace($"GPU sensor query failed.", ex);
+            return GPUInfo.Empty;
+        }
+    }
+
+    private static async Task<int> GetCachedSensorValueAsync(Func<Task<int>> query, int? cachedValue, Action<int> updateCache)
+    {
+        if (cachedValue is >= 0)
+            return cachedValue.Value;
+
+        var value = await QuerySensorValueAsync(query).ConfigureAwait(false);
+        if (value >= 0)
+            updateCache(value);
+
+        return value;
+    }
+
+    private static async Task<int> QuerySensorValueAsync(Func<Task<int>> query)
+    {
+        try
+        {
+            return await query().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is ManagementException or COMException or InvalidOperationException)
+        {
+            // A single malformed/transient reading invalidates only that metric. Do not
+            // discard otherwise healthy CPU, GPU and PCH readings from the same refresh.
+            Log.Instance.Trace($"Sensor query failed. [query={query.Method.Name}]", ex);
+            return -1;
+        }
     }
 
     public virtual async Task<FanSpeedTable> GetFanSpeedsAsync()
@@ -232,7 +279,7 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
         }
     }
 
-    protected async Task<GPUInfo> GetGPUInfoAsync()
+    protected virtual async Task<GPUInfo> GetGPUInfoAsync()
     {
         var hybridModeFeature = IoCContainer.Resolve<HybridModeFeature>();
         if (hybridModeFeature.ShouldKeepDGPUAsleep())

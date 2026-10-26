@@ -303,11 +303,13 @@ public partial class SettingsAppBehaviorControl
         var feature = IoCContainer.Resolve<IFeature<HardwareSensorsState>>();
         await feature.SetStateAsync(state.Value ? HardwareSensorsState.On : HardwareSensorsState.Off);
 
-        if (state.Value)
+        var enabled = _settings.Store.EnableHardwareSensors;
+        _hardwareSensorsToggle.IsChecked = enabled;
+        if (enabled)
             _hardwareSensorSettings.EnsureFileExists();
 
-        _useNewSensorDashboardCardControl.Visibility = state.Value ? Visibility.Visible : Visibility.Collapsed;
-        _osdCardControl.Visibility = state.Value ? Visibility.Visible : Visibility.Collapsed;
+        _useNewSensorDashboardCardControl.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
+        _osdCardControl.Visibility = enabled ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void UseNewSensorDashboard_Toggle(object sender, RoutedEventArgs e)

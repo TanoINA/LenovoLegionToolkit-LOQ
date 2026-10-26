@@ -141,18 +141,10 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
             return false;
         }
 
-        try
-        {
-            _profile = profile;
-            _ = await GetDataAsync().ConfigureAwait(false);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            _profile = null;
-            Log.Instance.Trace($"Error checking support. [type={GetType().Name}]", ex);
-            return false;
-        }
+        _profile = profile;
+        // Fan-table support and live sensor reads have different failure modes.
+        // A transient WMI/NVAPI error must not reclassify the controller as unsupported.
+        return true;
     }
 
     public async Task<ISensorsController?> GetControllerAsync() =>

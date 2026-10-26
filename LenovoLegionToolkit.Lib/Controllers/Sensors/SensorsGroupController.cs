@@ -12,7 +12,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Controllers.Sensors.Providers;
 using LenovoLegionToolkit.Lib.Features.Hybrid;
-using LenovoLegionToolkit.Lib.Settings;
 using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.Utils;
 using LibreHardwareMonitor.Hardware;
@@ -358,21 +357,26 @@ public class SensorsGroupController : IDisposable
         {
             if (_initialized) { InitialState = LibreHardwareMonitorInitialState.Initialized; return InitialState; }
             await Task.Run(GetHardware).ConfigureAwait(false);
-            _initialized = true;
-            InitialState = _hardware.Count == 0 ? LibreHardwareMonitorInitialState.Fail : LibreHardwareMonitorInitialState.Success;
+            _initialized = _hardware.Count != 0;
+            InitialState = _initialized ? LibreHardwareMonitorInitialState.Success : LibreHardwareMonitorInitialState.Fail;
             return InitialState;
         }
-        catch (DllNotFoundException) { HandleInitException("DLL Not Found"); InitialState = LibreHardwareMonitorInitialState.PawnIONotInstalled; return InitialState; }
-        catch (Exception ex) { HandleInitException(ex.Message); throw; }
+        catch (DllNotFoundException ex) { HandleInitException("DLL Not Found", ex); InitialState = LibreHardwareMonitorInitialState.PawnIONotInstalled; return InitialState; }
+        catch (Exception ex)
+        {
+            Log.Instance.ErrorReport("Hardware sensor initialization failed", ex);
+            HandleInitException("Hardware initialization failed", ex);
+            throw;
+        }
         finally { _initSemaphore.Release(); }
     }
 
-    private void HandleInitException(string reason)
+    private void HandleInitException(string reason, Exception ex)
     {
-        var settings = IoCContainer.Resolve<ApplicationSettings>();
-        settings.Store.EnableHardwareSensors = false;
-        settings.SynchronizeStore();
+        // Initialization can fail transiently during driver/power transitions. Keep the
+        // user's preference intact so a later retry can recover without manual re-arming.
         InitialState = LibreHardwareMonitorInitialState.Fail;
+        Log.Instance.Trace($"Hardware sensor initialization failed. [reason={reason}]", ex);
     }
 
     #endregion

@@ -703,6 +703,7 @@ public partial class App
             Console.WriteLine(@$"[UnhandledException] {exception}");
         }
 
+        Log.Instance.ErrorReport("Unhandled exception", exception);
         Log.Instance.Trace($"Exception in LogUnhandledException {exception.Message}", exception);
         var userMessage = GetFriendlyErrorMessage(exception);
 
@@ -752,7 +753,9 @@ public partial class App
 
         if (string.IsNullOrWhiteSpace(inner.Message))
         {
-            return "An unexpected error occurred, please try again.";
+            return inner is FileNotFoundException { FileName: { Length: > 0 } fileName }
+                ? $"{inner.GetType().Name}: {fileName}"
+                : inner.GetType().Name;
         }
         else
         {

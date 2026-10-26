@@ -24,13 +24,20 @@ public class HardwareSensorsFeature(ApplicationSettings settings, OsdSettings os
 
     public async Task SetStateAsync(HardwareSensorsState state)
     {
-        if (state == HardwareSensorsState.On && !sensorsGroupController.IsLibreHardwareMonitorInitialized())
-            await sensorsGroupController.IsSupportedAsync().ConfigureAwait(false);
+        var enabled = state == HardwareSensorsState.On;
+        if (enabled && !sensorsGroupController.IsLibreHardwareMonitorInitialized())
+        {
+            var initialState = await sensorsGroupController.IsSupportedAsync().ConfigureAwait(false);
+            var initialized = initialState is LibreHardwareMonitorInitialState.Initialized or LibreHardwareMonitorInitialState.Success;
+            // Preserve an existing opt-in across transient reinitialization failures;
+            // only reject a fresh enable request that could not initialize successfully.
+            enabled = initialized || settings.Store.EnableHardwareSensors;
+        }
 
-        settings.Store.EnableHardwareSensors = state == HardwareSensorsState.On;
+        settings.Store.EnableHardwareSensors = enabled;
         settings.SynchronizeStore();
 
-        if (state == HardwareSensorsState.Off)
+        if (!enabled)
         {
             MessagingCenter.Publish(new OsdChangedMessage(ToggleState.Off, setPreference: false));
         }

@@ -57,66 +57,137 @@ public partial class SensorsControl
 
     private async void SensorsControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (IsVisible)
+        try
         {
-            Refresh();
-            return;
+            if (IsVisible)
+            {
+                await StartRefreshAsync();
+            }
+            else
+            {
+                await StopRefreshAsync();
+                if (!IsVisible)
+                    UpdateValues(SensorsData.Empty);
+            }
         }
-
-        if (_cts is not null)
-            await _cts.CancelAsync();
-
-        _cts = null;
-
-        if (_refreshTask is not null)
-            await _refreshTask;
-
-        _refreshTask = null;
-
-        UpdateValues(SensorsData.Empty);
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Sensors visibility handling failed.", ex);
+        }
     }
 
-    private void Refresh()
+    private async Task StartRefreshAsync()
     {
-        _cts?.Cancel();
-        _cts?.Dispose();
-        _cts = new CancellationTokenSource();
+        await StopRefreshAsync();
+        if (!IsVisible)
+            return;
 
-        var token = _cts.Token;
+        var cts = new CancellationTokenSource();
+        _cts = cts;
+        _refreshTask = Task.Run(() => RefreshLoopAsync(cts.Token));
+    }
 
-        _refreshTask = Task.Run(async () =>
+    private async Task StopRefreshAsync()
+    {
+        var cts = _cts;
+        var refreshTask = _refreshTask;
+        _cts = null;
+        _refreshTask = null;
+
+        if (cts is not null)
+            await cts.CancelAsync();
+
+        if (refreshTask is not null)
         {
-            Log.Instance.Trace($"Sensors refresh started...");
-
-            if (!await _controller.IsSupportedAsync())
+            try
             {
-                Log.Instance.Trace($"Sensors not supported.");
+                await refreshTask;
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Sensors refresh task failed.", ex);
+            }
+        }
 
-                Dispatcher.Invoke(() => Visibility = Visibility.Collapsed);
+        cts?.Dispose();
+    }
+
+    private async Task RefreshLoopAsync(CancellationToken token)
+    {
+        Log.Instance.Trace($"Sensors refresh started...");
+
+        try
+        {
+            var supported = false;
+            for (var attempt = 1; attempt <= 3 && !token.IsCancellationRequested; attempt++)
+            {
+                try
+                {
+                    supported = await _controller.IsSupportedAsync();
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"Sensors support probe failed. [attempt={attempt}]", ex);
+                }
+
+                if (supported)
+                    break;
+
+                if (attempt < 3)
+                    await Task.Delay(TimeSpan.FromSeconds(attempt), token);
+            }
+
+            if (!supported)
+            {
+                Log.Instance.Trace($"Sensors not supported after retries.");
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (IsVisible)
+                        Visibility = Visibility.Collapsed;
+                });
                 return;
             }
 
-            await _controller.PrepareAsync();
-
+            var prepared = false;
             while (!token.IsCancellationRequested)
             {
                 try
                 {
+                    if (!prepared)
+                    {
+                        await _controller.PrepareAsync();
+                        prepared = true;
+                    }
+
                     var data = await _controller.GetDataAsync();
-                    Dispatcher.Invoke(() => UpdateValues(data));
-                    await Task.Delay(TimeSpan.FromSeconds(_dashboardSettings.Store.SensorsRefreshIntervalSeconds), token);
+                    await Dispatcher.InvokeAsync(() => UpdateValues(data));
                 }
-                catch (OperationCanceledException) { }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    break;
+                }
                 catch (Exception ex)
                 {
                     Log.Instance.Trace($"Sensors refresh failed.", ex);
-
-                    Dispatcher.Invoke(() => UpdateValues(SensorsData.Empty));
+                    await Dispatcher.InvokeAsync(() => UpdateValues(SensorsData.Empty));
                 }
-            }
 
+                // Delay on both success and failure; a persistent WMI error must not
+                // turn the refresh loop into a tight query/dispatcher spin.
+                await Task.Delay(TimeSpan.FromSeconds(_dashboardSettings.Store.SensorsRefreshIntervalSeconds), token);
+            }
+        }
+        catch (OperationCanceledException) when (token.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Sensors refresh loop failed.", ex);
+        }
+        finally
+        {
             Log.Instance.Trace($"Sensors refresh stopped.");
-        }, token);
+        }
     }
 
     private void UpdateValues(SensorsData data)
