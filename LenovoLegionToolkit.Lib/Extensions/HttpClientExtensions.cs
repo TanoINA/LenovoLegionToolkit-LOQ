@@ -14,7 +14,8 @@ public static class HttpClientExtensions
             client.DefaultRequestHeaders.Add("X-LLT-Current-Version", version);
 
         using var response = await client.GetAsync(requestUri, HttpCompletionOption.ResponseHeadersRead, cancellationToken).ConfigureAwait(false);
-        
+        response.EnsureSuccessStatusCode();
+
         var contentLength = response.Content.Headers.ContentLength;
 
         await using var download = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);

@@ -23,11 +23,22 @@ public static class Registry
     {
         var cancellationTokenSource = new CancellationTokenSource();
         var task = Task.Run(() => Handler(cancellationTokenSource.Token), cancellationTokenSource.Token);
+        var disposed = 0;
 
         return new LambdaAsyncDisposable(async () =>
         {
-            await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
-            await task.ConfigureAwait(false);
+            if (Interlocked.Exchange(ref disposed, 1) != 0)
+                return;
+
+            try
+            {
+                await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+                await task.ConfigureAwait(false);
+            }
+            finally
+            {
+                cancellationTokenSource.Dispose();
+            }
         });
 
         void Handler(CancellationToken token)
@@ -69,7 +80,10 @@ public static class Registry
     public static IDisposable ObserveValue(string hive, string path, string valueName, Action handler)
     {
         if (hive is "HKEY_CURRENT_USER" or "HKCU")
-            hive = WindowsIdentity.GetCurrent().User?.Value ?? throw new InvalidOperationException("Current user value is null");
+        {
+            using var identity = WindowsIdentity.GetCurrent();
+            hive = identity.User?.Value ?? throw new InvalidOperationException("Current user value is null");
+        }
 
         var pathFormatted = @$"SELECT * FROM RegistryValueChangeEvent WHERE Hive = 'HKEY_USERS' AND KeyPath = '{hive}\\{path.Replace(@"\", @"\\")}' AND ValueName = '{valueName}'";
 
@@ -141,7 +155,8 @@ public static class Registry
     public static T GetValue<T>(string hive, string subKey, string valueName, T defaultValue, bool doNotExpand = false)
     {
         using var baseKey = GetBaseKey(hive);
-        var value = baseKey.OpenSubKey(subKey)?.GetValue(valueName, defaultValue, doNotExpand ? RegistryValueOptions.DoNotExpandEnvironmentNames : RegistryValueOptions.None);
+        using var key = baseKey.OpenSubKey(subKey);
+        var value = key?.GetValue(valueName, defaultValue, doNotExpand ? RegistryValueOptions.DoNotExpandEnvironmentNames : RegistryValueOptions.None);
 
         if (value is not T t)
             return defaultValue;

@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.Features.Hybrid;
 using LenovoLegionToolkit.Lib.Listeners;
@@ -25,6 +26,8 @@ public class GPUOverclockController
     private readonly LegionSpaceDisabler _legionSpaceDisabler;
     private readonly LegionZoneDisabler _legionZoneDisabler;
     private readonly NativeWindowsMessageListener _nativeWindowsMessageListener;
+    private readonly SemaphoreSlim _applyLock = new(1, 1);
+    private readonly object _settingsLock = new();
 
     public event EventHandler? Changed;
 
@@ -64,9 +67,12 @@ public class GPUOverclockController
             {
                 Log.Instance.Trace($"Clearing settings...");
 
-                _settings.Store.Enabled = false;
-                _settings.Store.Info = GPUOverclockInfo.Zero;
-                _settings.SynchronizeStore();
+                lock (_settingsLock)
+                {
+                    _settings.Store.Enabled = false;
+                    _settings.Store.Info = GPUOverclockInfo.Zero;
+                    _settings.SynchronizeStore();
+                }
             }
         }
         catch
@@ -79,53 +85,74 @@ public class GPUOverclockController
         return isSupported;
     }
 
-    public (bool, GPUOverclockInfo) GetState() => (_settings.Store.Enabled, _settings.Store.Info);
+    public (bool, GPUOverclockInfo) GetState()
+    {
+        lock (_settingsLock)
+            return (_settings.Store.Enabled, _settings.Store.Info);
+    }
 
     public void SaveState(bool enabled, GPUOverclockInfo info)
     {
         Log.Instance.Trace($"Saved GPU overclock settings: [enabled={enabled}, info={info}].");
 
-        _settings.Store.Enabled = enabled;
-        _settings.Store.Info = info;
-        _settings.SynchronizeStore();
+        lock (_settingsLock)
+        {
+            _settings.Store.Enabled = enabled;
+            _settings.Store.Info = info;
+            _settings.SynchronizeStore();
+        }
     }
 
     public async Task<bool> ApplyStateAsync(bool force = false)
     {
+        await _applyLock.WaitAsync().ConfigureAwait(false);
+        bool result;
+        try
+        {
+            result = await ApplyStateCoreAsync(force).ConfigureAwait(false);
+        }
+        finally
+        {
+            _applyLock.Release();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        return result;
+    }
+
+    private async Task<bool> ApplyStateCoreAsync(bool force)
+    {
         if (await _vantageDisabler.GetStatusAsync().ConfigureAwait(false) == SoftwareStatus.Enabled)
         {
             Log.Instance.Trace($"Can't correctly apply state when Vantage is running.");
-
-            Changed?.Invoke(this, EventArgs.Empty);
             return false;
         }
 
         if (await _legionSpaceDisabler.GetStatusAsync().ConfigureAwait(false) == SoftwareStatus.Enabled)
         {
             Log.Instance.Trace($"Can't correctly apply state when Legion Space is running.");
-
-            Changed?.Invoke(this, EventArgs.Empty);
             return false;
         }
 
         if (await _legionZoneDisabler.GetStatusAsync().ConfigureAwait(false) == SoftwareStatus.Enabled)
         {
             Log.Instance.Trace($"Can't correctly apply state when Legion Zone is running.");
-
-            Changed?.Invoke(this, EventArgs.Empty);
             return false;
         }
 
         if (IoCContainer.Resolve<HybridModeFeature>().ShouldKeepDGPUAsleep())
         {
             Log.Instance.Trace($"dGPU eject is being ensured — skipping overclock apply.");
-
-            Changed?.Invoke(this, EventArgs.Empty);
             return false;
         }
 
-        var enabled = _settings.Store.Enabled;
-        var info = _settings.Store.Info;
+        bool enabled;
+        GPUOverclockInfo info;
+        lock (_settingsLock)
+        {
+            enabled = _settings.Store.Enabled;
+            info = _settings.Store.Info;
+        }
 
         if (force)
         {
@@ -138,9 +165,6 @@ public class GPUOverclockController
         if (!enabled)
         {
             Log.Instance.Trace($"Not enabled.");
-
-            Changed?.Invoke(this, EventArgs.Empty);
-
             return false;
         }
 
@@ -154,9 +178,6 @@ public class GPUOverclockController
             if (gpu is null)
             {
                 Log.Instance.Trace($"dGPU not found.");
-
-                Changed?.Invoke(this, EventArgs.Empty);
-
                 return false;
             }
 
@@ -186,15 +207,14 @@ public class GPUOverclockController
 
             Log.Instance.Trace($"Failed to apply overclock: {info}, clearing settings...", ex);
 
-            _settings.Store.Enabled = false;
-            _settings.Store.Info = GPUOverclockInfo.Zero;
-            _settings.SynchronizeStore();
+            lock (_settingsLock)
+            {
+                _settings.Store.Enabled = false;
+                _settings.Store.Info = GPUOverclockInfo.Zero;
+                _settings.SynchronizeStore();
+            }
 
             return false;
-        }
-        finally
-        {
-            Changed?.Invoke(this, EventArgs.Empty);
         }
     }
 

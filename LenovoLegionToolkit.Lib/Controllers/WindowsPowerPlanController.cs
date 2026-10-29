@@ -457,7 +457,14 @@ public class WindowsPowerPlanController(ApplicationSettings settings, VantageDis
             if (PInvoke.PowerGetActiveScheme(null, out var guid) != WIN32_ERROR.ERROR_SUCCESS)
                 PInvokeExtensions.ThrowIfWin32Error("PowerGetActiveScheme");
 
-            return *guid;
+            try
+            {
+                return *guid;
+            }
+            finally
+            {
+                PowerPlanExtensions.FreeLocalAlloc((IntPtr)guid);
+            }
         }
         catch (Exception ex)
         {

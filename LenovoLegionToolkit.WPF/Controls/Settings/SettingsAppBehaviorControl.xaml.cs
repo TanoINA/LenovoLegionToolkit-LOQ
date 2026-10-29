@@ -254,7 +254,7 @@ public partial class SettingsAppBehaviorControl
         _settings.Store.EnableLogging = state.Value;
         _settings.SynchronizeStore();
 
-        await Compatibility.PrintMachineInfoAsync().ConfigureAwait(false);
+        await Compatibility.PrintMachineInfoAsync();
 
         mainWindow._openLogIndicator.Visibility = Utils.BooleanToVisibilityConverter.Convert(_settings.Store.EnableLogging);
     }

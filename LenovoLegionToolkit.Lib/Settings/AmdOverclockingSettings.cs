@@ -5,6 +5,8 @@ namespace LenovoLegionToolkit.Lib.Settings;
 
 public class AmdOverclockingSettings() : AbstractSettings<AmdOverclockingSettings.AmdOverclockingSettingsStore>("amd_oc.json")
 {
+    private readonly object _profileLock = new();
+
     public class AmdOverclockingSettingsStore
     {
         public bool Enabled { get; set; }
@@ -22,53 +24,68 @@ public class AmdOverclockingSettings() : AbstractSettings<AmdOverclockingSetting
         public Dictionary<CurveShapeLevel, List<int>>? CurveShapeValues { get; set; } = [];
     }
 
-    public bool HasProfile =>
-        Store.FMax.HasValue ||
-        Store.CoreValues.Any(v => v.HasValue) ||
-        Store.PowerLimit1.HasValue ||
-        Store.PowerLimit2.HasValue ||
-        Store.PowerLimit3.HasValue ||
-        Store.EDCSoc.HasValue ||
-        Store.EDCVdd.HasValue ||
-        Store.TDCSoc.HasValue ||
-        Store.TDCVdd.HasValue ||
-        (Store.CurveShapeValues?.Any(kvp => kvp.Value.Any(v => v != 0)) == true);
+    public bool HasProfile
+    {
+        get
+        {
+            lock (_profileLock)
+            {
+                return Store.FMax.HasValue ||
+                       (Store.CoreValues?.Any(v => v.HasValue) == true) ||
+                       Store.PowerLimit1.HasValue ||
+                       Store.PowerLimit2.HasValue ||
+                       Store.PowerLimit3.HasValue ||
+                       Store.EDCSoc.HasValue ||
+                       Store.EDCVdd.HasValue ||
+                       Store.TDCSoc.HasValue ||
+                       Store.TDCVdd.HasValue ||
+                       (Store.CurveShapeValues?.Any(kvp => kvp.Value.Any(v => v != 0)) == true);
+            }
+        }
+    }
 
     public OverclockingProfile? GetProfile()
     {
-        if (!HasProfile) return null;
-
-        return new OverclockingProfile
+        lock (_profileLock)
         {
-            FMax = Store.FMax,
-            CoreValues = Store.CoreValues,
-            PowerLimit1 = Store.PowerLimit1,
-            PowerLimit2 = Store.PowerLimit2,
-            PowerLimit3 = Store.PowerLimit3,
-            EDCSoc = Store.EDCSoc,
-            EDCVdd = Store.EDCVdd,
-            TDCSoc = Store.TDCSoc,
-            TDCVdd = Store.TDCVdd,
-            CurveShapeValues = Store.CurveShapeValues?
-                .Where(kvp => kvp.Value.Any(v => v != 0))
-                .ToDictionary(kvp => kvp.Key, kvp => kvp.Value),
-        };
+            if (!HasProfile)
+                return null;
+
+            return new OverclockingProfile
+            {
+                FMax = Store.FMax,
+                CoreValues = Store.CoreValues?.ToList() ?? [],
+                PowerLimit1 = Store.PowerLimit1,
+                PowerLimit2 = Store.PowerLimit2,
+                PowerLimit3 = Store.PowerLimit3,
+                EDCSoc = Store.EDCSoc,
+                EDCVdd = Store.EDCVdd,
+                TDCSoc = Store.TDCSoc,
+                TDCVdd = Store.TDCVdd,
+                CurveShapeValues = CopyNonZeroCurveValues(Store.CurveShapeValues)
+            };
+        }
     }
 
     public void SetProfile(OverclockingProfile profile)
     {
-        Store.FMax = profile.FMax;
-        Store.CoreValues = profile.CoreValues;
-        Store.PowerLimit1 = profile.PowerLimit1;
-        Store.PowerLimit2 = profile.PowerLimit2;
-        Store.PowerLimit3 = profile.PowerLimit3;
-        Store.EDCSoc = profile.EDCSoc;
-        Store.EDCVdd = profile.EDCVdd;
-        Store.TDCSoc = profile.TDCSoc;
-        Store.TDCVdd = profile.TDCVdd;
-        Store.CurveShapeValues = profile.CurveShapeValues?
-            .Where(kvp => kvp.Value.Any(v => v != 0))
-            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
-        SynchronizeStore();
+        lock (_profileLock)
+        {
+            Store.FMax = profile.FMax;
+            Store.CoreValues = profile.CoreValues?.ToList() ?? [];
+            Store.PowerLimit1 = profile.PowerLimit1;
+            Store.PowerLimit2 = profile.PowerLimit2;
+            Store.PowerLimit3 = profile.PowerLimit3;
+            Store.EDCSoc = profile.EDCSoc;
+            Store.EDCVdd = profile.EDCVdd;
+            Store.TDCSoc = profile.TDCSoc;
+            Store.TDCVdd = profile.TDCVdd;
+            Store.CurveShapeValues = CopyNonZeroCurveValues(profile.CurveShapeValues);
+            SynchronizeStore();
+        }
     }
+
+    private static Dictionary<CurveShapeLevel, List<int>>? CopyNonZeroCurveValues(Dictionary<CurveShapeLevel, List<int>>? values) =>
+        values?.Where(kvp => kvp.Value.Any(v => v != 0))
+            .ToDictionary(kvp => kvp.Key, kvp => kvp.Value.ToList());
 }

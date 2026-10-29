@@ -175,8 +175,15 @@ namespace LenovoLegionToolkit.Lib.Controllers.Sensors
 
                 var monitoringTask = Task.Run(async () =>
                 {
-                    await FpsInspector.StartForeverAsync(request, OnFpsDataReceived, linkedTokenSource.Token).ConfigureAwait(true);
-                }, linkedTokenSource.Token);
+                    try
+                    {
+                        await FpsInspector.StartForeverAsync(request, OnFpsDataReceived, linkedTokenSource.Token).ConfigureAwait(true);
+                    }
+                    finally
+                    {
+                        linkedTokenSource.Dispose();
+                    }
+                }, CancellationToken.None);
 
                 monitoringTask.ContinueWith(t =>
                 {

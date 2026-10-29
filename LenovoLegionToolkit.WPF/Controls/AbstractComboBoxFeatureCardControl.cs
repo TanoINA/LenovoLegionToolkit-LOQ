@@ -111,6 +111,11 @@ public abstract class AbstractComboBoxFeatureCardControl<T> : AbstractRefreshing
         }));
     }
 
+    protected override void OnFinishedUnloading()
+    {
+        MessagingCenter.Unsubscribe(this);
+    }
+
     protected virtual async Task OnStateChangeAsync(ComboBox comboBox, IFeature<T> feature, T? newValue, T? oldValue)
     {
         var exceptionOccurred = false;

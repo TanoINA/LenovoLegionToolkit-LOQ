@@ -21,6 +21,7 @@ public partial class SensorsControl
     private readonly ISensorsController _controller = IoCContainer.Resolve<ISensorsController>();
     private readonly ApplicationSettings _applicationSettings = IoCContainer.Resolve<ApplicationSettings>();
     private readonly DashboardSettings _dashboardSettings = IoCContainer.Resolve<DashboardSettings>();
+    private readonly SemaphoreSlim _visibilityLock = new(1, 1);
 
     private CancellationTokenSource? _cts;
     private Task? _refreshTask;
@@ -57,6 +58,7 @@ public partial class SensorsControl
 
     private async void SensorsControl_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
+        await _visibilityLock.WaitAsync();
         try
         {
             if (IsVisible)
@@ -74,6 +76,10 @@ public partial class SensorsControl
         catch (Exception ex)
         {
             Log.Instance.Trace($"Sensors visibility handling failed.", ex);
+        }
+        finally
+        {
+            _visibilityLock.Release();
         }
     }
 

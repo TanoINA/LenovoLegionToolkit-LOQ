@@ -231,7 +231,7 @@ public class AutomationProcessor(
                     Log.Instance.Trace($"Running pipeline... [name={pipeline.Name}, trigger={pipeline.Trigger}, steps.Count={pipeline.Steps.Count}]");
 
                     var otherPipelines = pipelines.Where(p => p.Id != pipeline.Id).ToList();
-                    await pipeline.RunAsync(otherPipelines, ct).ConfigureAwait(false);
+                    await pipeline.RunAsync(otherPipelines, ct, automationEvent is StartupAutomationEvent).ConfigureAwait(false);
 
                     Log.Instance.Trace($"Pipeline completed successfully. [name={pipeline.Name}, trigger={pipeline.Trigger}]");
                 }

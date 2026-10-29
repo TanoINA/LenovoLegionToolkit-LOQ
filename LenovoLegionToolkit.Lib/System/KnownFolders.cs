@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Windows.Win32;
 using LenovoLegionToolkit.Lib.Extensions;
 
@@ -17,10 +18,16 @@ public static class KnownFolders
         [KnownFolder.SavedSearches] = new("7D1D3A04-DEBB-4115-95CF-2F29DA2920DA")
     };
 
-    public static string GetPath(KnownFolder knownFolder)
+    public static unsafe string GetPath(KnownFolder knownFolder)
     {
-        if (!PInvoke.SHGetKnownFolderPath(Folders[knownFolder], PInvokeExtensions.KF_FLAG_DEFAULT, null, out var path).Succeeded)
-            return string.Empty;
-        return path.ToString() ?? string.Empty;
+        var result = PInvoke.SHGetKnownFolderPath(Folders[knownFolder], PInvokeExtensions.KF_FLAG_DEFAULT, null, out var path);
+        try
+        {
+            return result.Succeeded ? path.ToString() ?? string.Empty : string.Empty;
+        }
+        finally
+        {
+            Marshal.FreeCoTaskMem((IntPtr)path.Value);
+        }
     }
 }

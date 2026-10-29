@@ -1,4 +1,5 @@
-﻿using System.Collections.Generic;
+﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
@@ -66,8 +67,25 @@ internal readonly struct ExternalDetectionRule : IPackageRule
 
         if (!File.Exists(filePath))
         {
-            await using var fileStream = File.OpenWrite(filePath);
-            await httpClient.DownloadAsync(Url, fileStream, null, token).ConfigureAwait(false);
+            var tempPath = Path.Combine(packagePath, $"{FileName}.{Guid.NewGuid():N}.tmp");
+            try
+            {
+                await using (var fileStream = File.OpenWrite(tempPath))
+                    await httpClient.DownloadAsync(Url, fileStream, null, token).ConfigureAwait(false);
+
+                File.Move(tempPath, filePath, true);
+            }
+            catch
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch { /* Preserve the original download exception. */ }
+
+                throw;
+            }
         }
 
         var executable = Command.Split(' ').FirstOrDefault();

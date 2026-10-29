@@ -46,7 +46,8 @@ public class NotifyIcon : NativeWindow, IDisposable
     {
         set
         {
-            _icon = value;
+            _icon?.Dispose();
+            _icon = value is null ? null : (Icon)value.Clone();
             UpdateIcon();
 
         }
@@ -135,9 +136,11 @@ public class NotifyIcon : NativeWindow, IDisposable
 
         if (_showToolTipCancellationTokenSource is not null)
             await _showToolTipCancellationTokenSource.CancelAsync();
-        _showToolTipCancellationTokenSource = new();
 
-        var token = _showToolTipCancellationTokenSource.Token;
+        var cancellationTokenSource = new CancellationTokenSource();
+        _showToolTipCancellationTokenSource = cancellationTokenSource;
+        var token = cancellationTokenSource.Token;
+        UiWindow? createdWindow = null;
 
         try
         {
@@ -147,23 +150,33 @@ public class NotifyIcon : NativeWindow, IDisposable
                 return;
 
             _currentToolTipWindow?.Close();
-            _currentToolTipWindow = await _toolTipWindow();
+            _currentToolTipWindow = null;
 
+            createdWindow = await _toolTipWindow();
             token.ThrowIfCancellationRequested();
 
-            _currentToolTipWindow?.Show();
+            _currentToolTipWindow = createdWindow;
+            createdWindow.Show();
         }
         catch (OperationCanceledException)
         {
-            _currentToolTipWindow?.Close();
-            _currentToolTipWindow = null;
+            createdWindow?.Close();
+            if (ReferenceEquals(_currentToolTipWindow, createdWindow))
+                _currentToolTipWindow = null;
         }
         catch (Exception ex)
         {
-            _currentToolTipWindow?.Close();
-            _currentToolTipWindow = null;
+            createdWindow?.Close();
+            if (ReferenceEquals(_currentToolTipWindow, createdWindow))
+                _currentToolTipWindow = null;
 
             Log.Instance.Trace($"Failed to show tooltip.", ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_showToolTipCancellationTokenSource, cancellationTokenSource))
+                _showToolTipCancellationTokenSource = null;
+            cancellationTokenSource.Dispose();
         }
     }
 

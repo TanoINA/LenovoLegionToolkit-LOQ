@@ -23,6 +23,7 @@ public class GPUController
 {
     private readonly AsyncLock _stateLock = new();
     private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
 
     public int Interval { get; set; } = 5000;
 
@@ -68,38 +69,54 @@ public class GPUController
         }
     }
 
-    public Task StartAsync(int delay = -1, int interval = 5_000)
+    public async Task StartAsync(int delay = -1, int interval = 5_000)
     {
-        if (IsStarted)
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            return Task.CompletedTask;
+            if (IsStarted)
+                return;
+
+            Interval = interval;
+
+            var startupDelay = delay >= 0 ? delay : IoCContainer.Resolve<ApplicationSettings>().Store.GPUMonitoringStartupDelay;
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            _refreshCancellationTokenSource = cancellationTokenSource;
+            _ = RefreshLoopAsync(startupDelay, cancellationTokenSource.Token);
         }
-
-        Interval = interval;
-
-        var startupDelay = delay >= 0 ? delay : IoCContainer.Resolve<ApplicationSettings>().Store.GPUMonitoringStartupDelay;
-
-        _refreshCancellationTokenSource = new CancellationTokenSource();
-        var token = _refreshCancellationTokenSource.Token;
-        _ = RefreshLoopAsync(startupDelay, token);
-
-        return Task.CompletedTask;
+        finally
+        {
+            _lifecycleLock.Release();
+        }
     }
 
     public async Task StopAsync(bool waitForFinish = false)
     {
-        if (_refreshCancellationTokenSource is null)
+        await _lifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            return;
+            var cancellationTokenSource = _refreshCancellationTokenSource;
+            if (cancellationTokenSource is null)
+                return;
+
+            _refreshCancellationTokenSource = null;
+            try
+            {
+                await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+
+                await _refreshGate.WaitAsync().ConfigureAwait(false);
+                _refreshGate.Release();
+            }
+            finally
+            {
+                cancellationTokenSource.Dispose();
+            }
         }
-
-        await _refreshCancellationTokenSource.CancelAsync().ConfigureAwait(false);
-
-        await _refreshGate.WaitAsync().ConfigureAwait(false);
-        _refreshGate.Release();
-
-        _refreshCancellationTokenSource.Dispose();
-        _refreshCancellationTokenSource = null;
+        finally
+        {
+            _lifecycleLock.Release();
+        }
     }
 
     public async Task RestartGPUAsync()

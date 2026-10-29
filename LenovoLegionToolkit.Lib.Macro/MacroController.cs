@@ -95,19 +95,24 @@ public class MacroController : IDisposable
             return PInvoke.CallNextHookEx(HHOOK.Null, nCode, wParam, lParam);
 
         ref var kbStruct = ref Unsafe.AsRef<KBDLLHOOKSTRUCT>((void*)lParam.Value);
+        var isKeyDown = (uint)wParam is PInvoke.WM_KEYDOWN or PInvoke.WM_SYSKEYDOWN;
 
-        _player.InterruptIfNeeded(kbStruct);
+        if (isKeyDown)
+            _player.InterruptIfNeeded(kbStruct);
 
-        var shouldRun = !_recorder.IsRecording;
-        shouldRun &= kbStruct.flags == 0;
-        shouldRun &= _settings.Store.Sequences.GetValueOrNull(new(MacroSource.Keyboard, kbStruct.vkCode))?.Events?.Length > 0;
-        shouldRun &= AllowedKeys.Contains(kbStruct.vkCode);
+        var shouldSuppressHotkey = !_recorder.IsRecording;
+        shouldSuppressHotkey &= kbStruct.flags == 0;
+        shouldSuppressHotkey &= _settings.Store.Sequences.GetValueOrNull(new(MacroSource.Keyboard, kbStruct.vkCode))?.Events?.Length > 0;
+        shouldSuppressHotkey &= AllowedKeys.Contains(kbStruct.vkCode);
 
-        if (!shouldRun)
+        if (!shouldSuppressHotkey)
             return PInvoke.CallNextHookEx(HHOOK.Null, nCode, wParam, lParam);
 
-        var sequence = _settings.Store.Sequences[new(MacroSource.Keyboard, kbStruct.vkCode)];
-        Play(sequence);
+        if (isKeyDown)
+        {
+            var sequence = _settings.Store.Sequences[new(MacroSource.Keyboard, kbStruct.vkCode)];
+            Play(sequence);
+        }
 
         return new LRESULT(96);
     }
@@ -178,5 +183,6 @@ public class MacroController : IDisposable
             _kbHook = default;
         }
         _recorder.StopRecording();
+        _player.Dispose();
     }
 }

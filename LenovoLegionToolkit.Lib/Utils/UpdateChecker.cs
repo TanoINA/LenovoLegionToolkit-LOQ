@@ -224,35 +224,49 @@ public class UpdateChecker
         {
             var tempPath = Path.Combine(Folders.Temp, $"LenovoLegionToolkitSetup_{Guid.NewGuid()}.exe");
 
-            if (_updateSettings.Store.UpdateMethod == UpdateMethod.GitHub)
+            try
             {
-                var latestUpdate = _updates.OrderByDescending(u => u.Version).FirstOrDefault();
-
-                if (latestUpdate.Url is null)
-                    throw new InvalidOperationException("No GitHub updates available");
-
-                await using var fileStream = File.OpenWrite(tempPath);
-                using var httpClient = _httpClientFactory.Create();
-                await httpClient.DownloadAsync(latestUpdate.Url, fileStream, progress, cancellationToken).ConfigureAwait(false);
-            }
-            else
-            {
-                if (UpdateFromServer is not { Url: not null })
-                    throw new InvalidOperationException("Setup file URL could not be found");
-
-                var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0.0";
-
-                using var httpClient = _httpClientFactory.Create();
-
+                if (_updateSettings.Store.UpdateMethod == UpdateMethod.GitHub)
                 {
+                    var latestUpdate = _updates.OrderByDescending(u => u.Version).FirstOrDefault();
+
+                    if (latestUpdate.Url is null)
+                        throw new InvalidOperationException("No GitHub updates available");
+
                     await using var fileStream = File.OpenWrite(tempPath);
-                    await httpClient.DownloadAsync(UpdateFromServer.Value.Url, fileStream, progress, cancellationToken, version).ConfigureAwait(false);
+                    using var httpClient = _httpClientFactory.Create();
+                    await httpClient.DownloadAsync(latestUpdate.Url, fileStream, progress, cancellationToken).ConfigureAwait(false);
+                }
+                else
+                {
+                    if (UpdateFromServer is not { Url: not null })
+                        throw new InvalidOperationException("Setup file URL could not be found");
+
+                    var version = Assembly.GetEntryAssembly()?.GetName().Version?.ToString() ?? "0.0.0.0";
+
+                    using var httpClient = _httpClientFactory.Create();
+
+                    {
+                        await using var fileStream = File.OpenWrite(tempPath);
+                        await httpClient.DownloadAsync(UpdateFromServer.Value.Url, fileStream, progress, cancellationToken, version).ConfigureAwait(false);
+                    }
+
+                    VerifySignature(tempPath);
                 }
 
-                VerifySignature(tempPath);
+                return tempPath;
             }
+            catch
+            {
+                try
+                {
+                    if (File.Exists(tempPath))
+                        File.Delete(tempPath);
+                }
+                catch { /* Preserve the original download/verification exception. */ }
 
-            return tempPath;
+                throw;
+            }
         }
     }
 
@@ -272,6 +286,8 @@ public class UpdateChecker
     {
         try
         {
+            AuthenticodeVerifier.Verify(filePath);
+
 #pragma warning disable SYSLIB0057
             using var baseCert = X509Certificate.CreateFromSignedFile(filePath);
 #pragma warning restore SYSLIB0057

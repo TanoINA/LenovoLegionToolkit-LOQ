@@ -4,6 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using LenovoLegionToolkit.Lib.Controllers;
+using LenovoLegionToolkit.Lib.Extensions;
 using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.Utils;
 using Windows.Win32;
@@ -200,7 +201,16 @@ public class PowerListener(IMainThreadDispatcher mainThreadDispatcher) : NativeW
         try
         {
             if (PInvoke.PowerGetActiveScheme(null, out var guid) == WIN32_ERROR.ERROR_SUCCESS)
-                return *guid;
+            {
+                try
+                {
+                    return *guid;
+                }
+                finally
+                {
+                    PowerPlanExtensions.FreeLocalAlloc((IntPtr)guid);
+                }
+            }
         }
         catch (Exception ex)
         {

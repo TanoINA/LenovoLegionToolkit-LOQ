@@ -48,7 +48,7 @@ public class AutomationPipeline
 
     public AutomationPipeline(IAutomationPipelineTrigger trigger) => Trigger = trigger;
 
-    internal async Task RunAsync(List<AutomationPipeline> otherPipelines, CancellationToken token = default)
+    internal async Task RunAsync(List<AutomationPipeline> otherPipelines, CancellationToken token = default, bool isStartup = false)
     {
         if (token.IsCancellationRequested)
         {
@@ -61,6 +61,8 @@ public class AutomationPipeline
         var stepExceptions = new List<Exception>();
 
         AllTriggers.ForEach(t => t.UpdateEnvironment(environment));
+        if (isStartup)
+            environment.Startup = true;
 
         foreach (var step in GetAllSteps(otherPipelines))
         {

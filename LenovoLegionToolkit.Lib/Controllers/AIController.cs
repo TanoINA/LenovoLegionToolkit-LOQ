@@ -88,9 +88,21 @@ public class AIController(
         }
     }
 
-    private async void PowerModeListener_Changed(object? sender, PowerModeListener.ChangedEventArgs e) => await _dispatcher.DispatchAsync(RefreshAsync).ConfigureAwait(false);
-    private async void PowerStateListener_Changed(object? sender, PowerStateListener.ChangedEventArgs e) => await _dispatcher.DispatchAsync(RefreshAsync).ConfigureAwait(false);
-    private async void GameAutoListener_Changed(object? sender, GameAutoListener.ChangedEventArgs e) => await _dispatcher.DispatchAsync(RefreshAsync).ConfigureAwait(false);
+    private async void PowerModeListener_Changed(object? sender, PowerModeListener.ChangedEventArgs e) => await RefreshAfterChangeAsync().ConfigureAwait(false);
+    private async void PowerStateListener_Changed(object? sender, PowerStateListener.ChangedEventArgs e) => await RefreshAfterChangeAsync().ConfigureAwait(false);
+    private async void GameAutoListener_Changed(object? sender, GameAutoListener.ChangedEventArgs e) => await RefreshAfterChangeAsync().ConfigureAwait(false);
+
+    private async Task RefreshAfterChangeAsync()
+    {
+        try
+        {
+            await _dispatcher.DispatchAsync(RefreshAsync).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to refresh after a change event.", ex);
+        }
+    }
 
     private async Task RefreshAsync()
     {
@@ -184,14 +196,23 @@ public class AIController(
             var intelligentOpList = await WMI.LenovoIntelligentOPList.ReadAsync().ConfigureAwait(false);
             foreach (var (processName, subMode) in intelligentOpList)
             {
-                var process = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName)).FirstOrDefault();
-                if (process is null)
-                    continue;
+                var processes = Process.GetProcessesByName(Path.GetFileNameWithoutExtension(processName));
+                try
+                {
+                    var process = processes.FirstOrDefault();
+                    if (process is null)
+                        continue;
 
-                Log.Instance.Trace($"Found running process {processName}. [processId={process.Id}, subMode={subMode}]");
+                    Log.Instance.Trace($"Found running process {processName}. [processId={process.Id}, subMode={subMode}]");
 
-                targetSubMode = subMode;
-                break;
+                    targetSubMode = subMode;
+                    break;
+                }
+                finally
+                {
+                    foreach (var process in processes)
+                        process.Dispose();
+                }
             }
 
             await WMI.LenovoGameZoneData.SetIntelligentSubModeAsync(targetSubMode).ConfigureAwait(false);

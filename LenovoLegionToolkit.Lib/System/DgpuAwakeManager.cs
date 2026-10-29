@@ -192,7 +192,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                     {
                         unsafe
                         {
-                            PInvoke.D3D11CreateDevice(
+                            var result = PInvoke.D3D11CreateDevice(
                                 dgpuAdapter,
                                 Windows.Win32.Graphics.Direct3D.D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_UNKNOWN,
                                 Windows.Win32.Foundation.HMODULE.Null,
@@ -203,6 +203,11 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                                 out device,
                                 null,
                                 out context);
+                            if (result.Failed)
+                            {
+                                Log.Instance.Trace($"Failed to create D3D11 device for dGPU pulse. [hresult={result}]");
+                                return;
+                            }
                         }
                     }
                     finally
@@ -303,8 +308,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         await _lock.WaitAsync().ConfigureAwait(false);
         try
         {
-            // Re-check after acquiring the lock: same TOCTOU window as StartInternalAsync.
-            if (_isDisposed) return;
+            // Re-check activity after acquiring the lock. Disposal sets _isDisposed
+            // before calling this method, so that flag must not suppress cleanup.
             if (!_isActive) return;
 
             DisposeD3D11Device();
@@ -350,7 +355,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
         try
         {
-            PInvoke.D3D11CreateDevice(
+            var result = PInvoke.D3D11CreateDevice(
                 dgpuAdapter, 
                 Windows.Win32.Graphics.Direct3D.D3D_DRIVER_TYPE.D3D_DRIVER_TYPE_UNKNOWN,
                 Windows.Win32.Foundation.HMODULE.Null,
@@ -361,6 +366,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                 out _d3dDevice,
                 null,
                 out _d3dContext);
+            if (result.Failed)
+                throw new COMException($"Failed to create D3D11 device for dGPU awake. [hresult={result}]");
         }
         finally
         {

@@ -1,5 +1,6 @@
-﻿using System.Diagnostics;
-using System.Linq;
+﻿using System;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.System;
@@ -30,10 +31,18 @@ public class RunAutomationStep(string? scriptPath, string? scriptArguments, bool
 
         if (CheckInstance)
         {
-            var processList = Process.GetProcesses();
-            if (processList.Any(process => ScriptPath.Contains(process.ProcessName)))
+            var executableName = Path.GetFileNameWithoutExtension(ScriptPath);
+            foreach (var process in Process.GetProcesses())
             {
-                return;
+                using (process)
+                {
+                    try
+                    {
+                        if (string.Equals(process.ProcessName, executableName, StringComparison.OrdinalIgnoreCase))
+                            return;
+                    }
+                    catch { /* Ignore processes that exited or cannot be inspected. */ }
+                }
             }
         }
 

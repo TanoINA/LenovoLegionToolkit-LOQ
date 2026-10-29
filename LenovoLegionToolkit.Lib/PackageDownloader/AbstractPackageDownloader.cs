@@ -24,17 +24,31 @@ public abstract class AbstractPackageDownloader(HttpClientFactory httpClientFact
 
         var tempPath = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
 
-        await using (var fileStream = File.OpenWrite(tempPath))
-            await httpClient.DownloadAsync(package.FileLocation, fileStream, progress, token).ConfigureAwait(false);
+        try
+        {
+            await using (var fileStream = File.OpenWrite(tempPath))
+                await httpClient.DownloadAsync(package.FileLocation, fileStream, progress, token).ConfigureAwait(false);
 
-        await TryValidateChecksum(package, tempPath, httpClient, token).ConfigureAwait(false);
+            await TryValidateChecksum(package, tempPath, httpClient, token).ConfigureAwait(false);
 
-        var filename = SanitizeFileName(package.Title) + " - " + package.FileName;
-        var finalPath = Path.Combine(location, filename);
+            var filename = SanitizeFileName(package.Title) + " - " + package.FileName;
+            var finalPath = Path.Combine(location, filename);
 
-        File.Move(tempPath, finalPath, true);
+            File.Move(tempPath, finalPath, true);
 
-        return finalPath;
+            return finalPath;
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(tempPath))
+                    File.Delete(tempPath);
+            }
+            catch { /* Preserve the original download/validation exception. */ }
+
+            throw;
+        }
     }
 
     private static async Task TryValidateChecksum(Package package, string tempPath, HttpClient httpClient, CancellationToken token)

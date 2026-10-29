@@ -16,6 +16,7 @@ namespace LenovoLegionToolkit.WPF.Pages;
 public partial class BatteryPage
 {
     private readonly ApplicationSettings _settings = IoCContainer.Resolve<ApplicationSettings>();
+    private readonly SemaphoreSlim _visibilityLock = new(1, 1);
 
     private CancellationTokenSource? _cts;
     private Task? _refreshTask;
@@ -29,26 +30,47 @@ public partial class BatteryPage
 
     private async void BatteryPage_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
-        if (IsVisible)
+        await _visibilityLock.WaitAsync();
+        try
         {
-            Refresh();
-            return;
+            await StopRefreshAsync();
+            if (IsVisible)
+                Refresh();
         }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Battery refresh lifecycle failed.", ex);
+        }
+        finally
+        {
+            _visibilityLock.Release();
+        }
+    }
 
-        if (_cts is not null)
-            await _cts.CancelAsync();
-
+    private async Task StopRefreshAsync()
+    {
+        var cancellationTokenSource = _cts;
+        var refreshTask = _refreshTask;
         _cts = null;
-
-        if (_refreshTask is not null)
-            await _refreshTask;
-
         _refreshTask = null;
+
+        try
+        {
+            if (cancellationTokenSource is not null)
+                await cancellationTokenSource.CancelAsync();
+
+            if (refreshTask is not null)
+                await refreshTask;
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            cancellationTokenSource?.Dispose();
+        }
     }
 
     private void Refresh()
     {
-        _cts?.Cancel();
         _cts = new CancellationTokenSource();
 
         var token = _cts.Token;

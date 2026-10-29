@@ -37,6 +37,7 @@ public partial class SensorsControlV2
     private bool _subscribedToMessages;
     private Task<string>? _cpuNameTask;
     private Task<string>? _gpuNameTask;
+    private int _sensorUpdateRunning;
     private readonly HashSet<SensorItem> _activeSensorItems = [];
     private static readonly double[] AvailableRefreshIntervals = [0.5, 1, 2, 3, 4, 5];
     private readonly Dictionary<SensorItem, FrameworkElement> _sensorItemToControlMap;
@@ -321,14 +322,36 @@ public partial class SensorsControlV2
         var token = cts.Token;
         try
         {
-            var state = await _sensorsGroupControllers.IsSupportedAsync().WaitAsync(token);
-            if (token.IsCancellationRequested || !ShouldCollect() || state is not (LibreHardwareMonitorInitialState.Initialized or LibreHardwareMonitorInitialState.Success))
+            LibreHardwareMonitorInitialState state = LibreHardwareMonitorInitialState.Fail;
+            for (var attempt = 1; attempt <= 3; attempt++)
             {
-                return;
+                try
+                {
+                    state = await _sensorsGroupControllers.IsSupportedAsync().WaitAsync(token);
+                }
+                catch (OperationCanceledException) when (token.IsCancellationRequested)
+                {
+                    throw;
+                }
+                catch (Exception ex) when (attempt < 3)
+                {
+                    Log.Instance.Trace($"Sensor support probe failed; retrying. [attempt={attempt}]", ex);
+                }
+
+                if (state is LibreHardwareMonitorInitialState.Initialized or LibreHardwareMonitorInitialState.Success)
+                    break;
+
+                if (attempt < 3)
+                    await Task.Delay(TimeSpan.FromSeconds(attempt), token);
             }
 
+            if (token.IsCancellationRequested || !ShouldCollect() || state is not (LibreHardwareMonitorInitialState.Initialized or LibreHardwareMonitorInitialState.Success))
+                return;
+
             _sensorsGroupControllers.SensorsUpdated += OnSensorsUpdated;
-            _sensorSubscription = _sensorsGroupControllers.Subscribe(interval, _activeSensorItems);
+            _sensorSubscription = _activeSensorItems.All(IsLegacyOnlySensorItem)
+                ? _sensorsGroupControllers.Subscribe(interval, HardwareUpdateScope.Cpu)
+                : _sensorsGroupControllers.Subscribe(interval, _activeSensorItems);
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested) { /* Ignore */ }
         catch (Exception ex)
@@ -349,8 +372,18 @@ public partial class SensorsControlV2
         }
     }
 
+    private static bool IsLegacyOnlySensorItem(SensorItem item) => item is SensorItem.CpuFanSpeed
+        or SensorItem.GpuFanSpeed
+        or SensorItem.PchFanSpeed
+        or SensorItem.PchTemperature
+        or SensorItem.BatteryState
+        or SensorItem.BatteryLevel;
+
     private async void OnSensorsUpdated(HardwareSensorSnapshot snapshot)
     {
+        if (Interlocked.Exchange(ref _sensorUpdateRunning, 1) != 0)
+            return;
+
         try
         {
             var dataTask = Task.Run(async () =>
@@ -385,10 +418,19 @@ public partial class SensorsControlV2
                 batteryInfoTask.Result
             ), DispatcherPriority.Background);
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             Log.Instance.Trace($"Sensor refresh failed: {ex}");
-            await Dispatcher.BeginInvoke(ClearAllSensorValues);
+            try
+            {
+                await Dispatcher.BeginInvoke(ClearAllSensorValues);
+            }
+            catch (OperationCanceledException) { }
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _sensorUpdateRunning, 0);
         }
     }
 

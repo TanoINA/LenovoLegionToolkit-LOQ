@@ -59,7 +59,10 @@ public class WiFiAutoListener : AbstractAutoListener<WiFiAutoListener.ChangedEve
             null,
             null);
         if (result != 0)
+        {
+            _ = PInvoke.WlanCloseHandle(handle, null);
             return null;
+        }
 
         return new LambdaDisposable(() =>
         {

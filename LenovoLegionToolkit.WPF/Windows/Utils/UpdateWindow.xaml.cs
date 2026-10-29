@@ -84,9 +84,9 @@ public partial class UpdateWindow : IProgress<float>
 
             var path = await _updateChecker.DownloadLatestUpdateAsync(this, _downloadCancellationTokenSource.Token);
 
-            _downloadCancellationTokenSource = null;
-
+            _downloadCancellationTokenSource.Token.ThrowIfCancellationRequested();
             Process.Start(path, $"/SILENT /RESTARTAPPLICATIONS /LANG={Resource.Culture.Name.Replace("-", string.Empty)}");
+            _downloadCancellationTokenSource = null;
             await App.Current.ShutdownAsync();
         }
         catch (OperationCanceledException)

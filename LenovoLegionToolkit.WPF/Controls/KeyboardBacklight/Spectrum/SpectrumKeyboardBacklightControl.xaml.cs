@@ -150,7 +150,7 @@ public partial class SpectrumKeyboardBacklightControl
                     {
                         var presetProfile = e.SpecialKey - SpecialKey.SpectrumPreset1 + 1;
                         Log.Instance.Trace($"Spectrum preset key: profile {presetProfile}.");
-                        if (await _controller.IsFixedZoneKeyboardAsync().ConfigureAwait(false) && await _controller.GetProfileAsync() != presetProfile)
+                        if (await _controller.IsFixedZoneKeyboardAsync() && await _controller.GetProfileAsync() != presetProfile)
                         {
                             await _controller.SetProfileAsync(presetProfile);
                         }

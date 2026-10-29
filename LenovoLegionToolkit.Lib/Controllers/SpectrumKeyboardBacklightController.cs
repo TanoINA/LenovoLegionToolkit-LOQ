@@ -31,6 +31,7 @@ public class SpectrumKeyboardBacklightController
     private readonly VantageDisabler _vantageDisabler;
     private readonly IScreenCapture _screenCapture;
     private readonly SpectrumDeviceFactory _deviceFactory;
+    private readonly SemaphoreSlim _auroraLifecycleLock = new(1, 1);
 
     private CancellationTokenSource? _auroraRefreshCancellationTokenSource;
     private Task? _auroraRefreshTask;
@@ -61,24 +62,31 @@ public class SpectrumKeyboardBacklightController
 
     private async void Listener_Changed(object? sender, SpecialKeyListener.ChangedEventArgs e)
     {
-        if (!await IsSupportedAsync().ConfigureAwait(false))
-            return;
-
-        if (await _vantageDisabler.GetStatusAsync().ConfigureAwait(false) == SoftwareStatus.Enabled)
-            return;
-
-        switch (e.SpecialKey)
+        try
         {
-            case SpecialKey.SpectrumPreset1
-                or SpecialKey.SpectrumPreset2
-                or SpecialKey.SpectrumPreset3
-                or SpecialKey.SpectrumPreset4
-                or SpecialKey.SpectrumPreset5
-                or SpecialKey.SpectrumPreset6:
-                {
-                    await StartAuroraIfNeededAsync().ConfigureAwait(false);
-                    break;
-                }
+            if (!await IsSupportedAsync().ConfigureAwait(false))
+                return;
+
+            if (await _vantageDisabler.GetStatusAsync().ConfigureAwait(false) == SoftwareStatus.Enabled)
+                return;
+
+            switch (e.SpecialKey)
+            {
+                case SpecialKey.SpectrumPreset1
+                    or SpecialKey.SpectrumPreset2
+                    or SpecialKey.SpectrumPreset3
+                    or SpecialKey.SpectrumPreset4
+                    or SpecialKey.SpectrumPreset5
+                    or SpecialKey.SpectrumPreset6:
+                    {
+                        await StartAuroraIfNeededAsync().ConfigureAwait(false);
+                        break;
+                    }
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to handle Spectrum hotkey.", ex);
         }
     }
 
@@ -409,46 +417,72 @@ public class SpectrumKeyboardBacklightController
 
     public async Task<bool> StartAuroraIfNeededAsync(int? profile = null)
     {
-        await ThrowIfVantageEnabled().ConfigureAwait(false);
-
-        await StopAuroraIfNeededAsync().ConfigureAwait(false);
-
-        Log.Instance.Trace($"Starting Aurora... [profile={profile}]");
-
-        profile ??= await GetProfileAsync().ConfigureAwait(false);
-        var (_, effects) = await GetProfileDescriptionAsync(profile.Value).ConfigureAwait(false);
-
-        if (!effects.Any(e => e.Type == SpectrumKeyboardBacklightEffectType.AuroraSync))
+        await _auroraLifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
         {
-            Log.Instance.Trace($"Aurora not needed. [profile={profile}]");
+            await ThrowIfVantageEnabled().ConfigureAwait(false);
+            await StopAuroraCoreAsync().ConfigureAwait(false);
 
-            return false;
+            Log.Instance.Trace($"Starting Aurora... [profile={profile}]");
+
+            profile ??= await GetProfileAsync().ConfigureAwait(false);
+            var (_, effects) = await GetProfileDescriptionAsync(profile.Value).ConfigureAwait(false);
+
+            if (!effects.Any(e => e.Type == SpectrumKeyboardBacklightEffectType.AuroraSync))
+            {
+                Log.Instance.Trace($"Aurora not needed. [profile={profile}]");
+                return false;
+            }
+
+            var cancellationTokenSource = new CancellationTokenSource();
+            _auroraRefreshCancellationTokenSource = cancellationTokenSource;
+            _auroraRefreshTask = Task.Run(() => AuroraRefreshAsync(profile.Value, cancellationTokenSource.Token), cancellationTokenSource.Token);
+
+            Log.Instance.Trace($"Aurora started. [profile={profile}]");
+            return true;
         }
-
-        _auroraRefreshCancellationTokenSource = new();
-        var token = _auroraRefreshCancellationTokenSource.Token;
-        _auroraRefreshTask = Task.Run(() => AuroraRefreshAsync(profile.Value, token), token);
-
-        Log.Instance.Trace($"Aurora started. [profile={profile}]");
-
-        return true;
+        finally
+        {
+            _auroraLifecycleLock.Release();
+        }
     }
 
     public async Task StopAuroraIfNeededAsync()
     {
-        await ThrowIfVantageEnabled().ConfigureAwait(false);
+        await _auroraLifecycleLock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await StopAuroraCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _auroraLifecycleLock.Release();
+        }
+    }
 
+    private async Task StopAuroraCoreAsync()
+    {
         Log.Instance.Trace($"Stopping Aurora...");
 
-        if (_auroraRefreshCancellationTokenSource is not null)
-            await _auroraRefreshCancellationTokenSource.CancelAsync().ConfigureAwait(false);
-
-        if (_auroraRefreshTask is not null)
-            await _auroraRefreshTask.ConfigureAwait(false);
-
+        var cancellationTokenSource = _auroraRefreshCancellationTokenSource;
+        var refreshTask = _auroraRefreshTask;
+        _auroraRefreshCancellationTokenSource = null;
         _auroraRefreshTask = null;
 
-        Log.Instance.Trace($"Aurora stopped.");
+        try
+        {
+            if (cancellationTokenSource is not null)
+                await cancellationTokenSource.CancelAsync().ConfigureAwait(false);
+
+            if (refreshTask is not null)
+                await refreshTask.ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            cancellationTokenSource?.Dispose();
+            Log.Instance.Trace($"Aurora stopped.");
+        }
     }
 
     public async Task<Dictionary<ushort, RGBColor>> GetStateAsync(bool skipVantageCheck = false)
@@ -627,11 +661,18 @@ public class SpectrumKeyboardBacklightController
         }
         finally
         {
-            var handle = await _deviceFactory.GetHandleAsync().ConfigureAwait(false);
-            if (handle is not null)
+            try
             {
-                var currentProfile = await GetProfileAsync().ConfigureAwait(false);
-                await SetFeatureAsync(handle, new LENOVO_SPECTRUM_AURORA_START_STOP_REQUEST(false, (byte)currentProfile)).ConfigureAwait(false);
+                var handle = await _deviceFactory.GetHandleAsync().ConfigureAwait(false);
+                if (handle is not null)
+                {
+                    var currentProfile = await GetProfileAsync().ConfigureAwait(false);
+                    await SetFeatureAsync(handle, new LENOVO_SPECTRUM_AURORA_START_STOP_REQUEST(false, (byte)currentProfile)).ConfigureAwait(false);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed to clean up Aurora HID state.", ex);
             }
 
             Log.Instance.Trace($"Aurora refresh stopped.");

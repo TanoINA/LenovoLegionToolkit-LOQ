@@ -322,16 +322,23 @@ public partial class WindowsPowerModeController(ApplicationSettings settings, IM
         if (PInvoke.PowerGetActiveScheme(null, out var guid) != WIN32_ERROR.ERROR_SUCCESS)
             PInvokeExtensions.ThrowIfWin32Error("PowerGetActiveScheme");
 
-        if (PowerPlanExtensions.IsPlanBasedOnBalanced(*guid))
+        try
         {
-            Log.Instance.Trace($"Default power plan is already active.");
-            return;
+            if (PowerPlanExtensions.IsPlanBasedOnBalanced(*guid))
+            {
+                Log.Instance.Trace($"Default power plan is already active.");
+                return;
+            }
+
+            if (PInvoke.PowerSetActiveScheme(null, DefaultPowerPlan) != WIN32_ERROR.ERROR_SUCCESS)
+                PInvokeExtensions.ThrowIfWin32Error("PowerSetActiveScheme");
+
+            Log.Instance.Trace($"Activated default power plan.");
         }
-
-        if (PInvoke.PowerSetActiveScheme(null, DefaultPowerPlan) != WIN32_ERROR.ERROR_SUCCESS)
-            PInvokeExtensions.ThrowIfWin32Error("PowerSetActiveScheme");
-
-        Log.Instance.Trace($"Activated default power plan.");
+        finally
+        {
+            PowerPlanExtensions.FreeLocalAlloc((IntPtr)guid);
+        }
     }
 
     [LibraryImport("powrprof.dll", EntryPoint = "PowerSetActiveOverlayScheme")]

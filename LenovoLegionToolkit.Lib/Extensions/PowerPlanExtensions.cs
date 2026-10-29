@@ -25,6 +25,8 @@ public static class PowerPlanExtensions
     [DllImport("kernel32.dll")]
     private static extern IntPtr LocalFree(IntPtr hMem);
 
+    internal static void FreeLocalAlloc(IntPtr memory) => LocalFree(memory);
+
     public static bool IsPlanBasedOnBalanced(Guid schemeGuid)
     {
         var subGroup = NoSubGroupGuid;

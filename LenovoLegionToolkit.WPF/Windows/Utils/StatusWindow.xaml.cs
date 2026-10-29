@@ -31,7 +31,7 @@ public partial class StatusWindow
     private readonly SensorsControlSettings _sensorsControlSettings = IoCContainer.Resolve<SensorsControlSettings>();
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
+    private CancellationTokenSource _cancellationTokenSource = new();
 
     private DateTime _lastUpdate = DateTime.MinValue;
     private const int UI_UPDATE_THROTTLE_MS = 100;
@@ -211,6 +211,12 @@ public partial class StatusWindow
     {
         if (IsVisible)
         {
+            if (_cancellationTokenSource.IsCancellationRequested)
+            {
+                _cancellationTokenSource.Dispose();
+                _cancellationTokenSource = new CancellationTokenSource();
+            }
+
             if (!_settings.Store.EnableHardwareSensors)
                 return;
 

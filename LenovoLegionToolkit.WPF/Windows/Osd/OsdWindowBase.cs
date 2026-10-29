@@ -58,6 +58,8 @@ public abstract class OsdWindowBase : Window
     #region State
 
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
+    private readonly SemaphoreSlim _visibilityLock = new(1, 1);
+    private bool _isClosed;
     protected readonly StringBuilder _stringBuilder = new(64);
 
     protected DateTime _lastUpdate = DateTime.MinValue;
@@ -370,42 +372,72 @@ public abstract class OsdWindowBase : Window
 
     private async void OnVisibilityChanged(object? sender, DependencyPropertyChangedEventArgs e)
     {
-        await StopSensorLoopAsync();
-        if (IsVisible)
+        await _visibilityLock.WaitAsync();
+        try
         {
-            _sensorsGroupControllers.ShowAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
-            _sensorsGroupControllers.CpuTemperatureSource = _hardwareSensorSettings.Store.CpuTemperatureSource;
-            _sensorsGroupControllers.CpuVoltageMode = _hardwareSensorSettings.Store.CpuVoltageMode;
-            _sensorsGroupControllers.CpuVoltageCoreIndex = _hardwareSensorSettings.Store.CpuVoltageCoreIndex;
+            await StopSensorLoopAsync();
+            if (_isClosed)
+                return;
 
-            _cts = new CancellationTokenSource();
+            if (IsVisible)
+            {
+                _sensorsGroupControllers.ShowAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
+                _sensorsGroupControllers.CpuTemperatureSource = _hardwareSensorSettings.Store.CpuTemperatureSource;
+                _sensorsGroupControllers.CpuVoltageMode = _hardwareSensorSettings.Store.CpuVoltageMode;
+                _sensorsGroupControllers.CpuVoltageCoreIndex = _hardwareSensorSettings.Store.CpuVoltageCoreIndex;
 
-            CheckAndUpdateFpsMonitoring();
-            UpdateMeasurementControlsVisibility();
+                _cts = new CancellationTokenSource();
 
-            StartHardwareSensorUpdates();
+                CheckAndUpdateFpsMonitoring();
+                UpdateMeasurementControlsVisibility();
 
-            _sensorLoopTask = TheRing(_cts.Token);
-            await _sensorLoopTask;
+                StartHardwareSensorUpdates();
+
+                _sensorLoopTask = TheRing(_cts.Token);
+                _ = ObserveSensorLoopAsync(_sensorLoopTask);
+            }
+            else
+            {
+                _sensorSubscription?.Dispose();
+                CheckAndUpdateFpsMonitoring();
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _sensorSubscription?.Dispose();
-            CheckAndUpdateFpsMonitoring();
+            Log.Instance.Trace($"OSD visibility transition failed.", ex);
         }
+        finally
+        {
+            _visibilityLock.Release();
+        }
+    }
+
+    private async Task ObserveSensorLoopAsync(Task task)
+    {
+        try { await task; }
+        catch (OperationCanceledException) { }
+        catch (Exception ex) { Log.Instance.Trace($"OSD sensor loop failed.", ex); }
     }
 
     private async Task StopSensorLoopAsync()
     {
-        _cts?.Cancel();
+        var cancellationTokenSource = _cts;
         var task = _sensorLoopTask;
-        if (task is not null)
-        {
-            try { await task; } catch (OperationCanceledException) { }
-        }
-        _sensorLoopTask = null;
-        _cts?.Dispose();
         _cts = null;
+        _sensorLoopTask = null;
+
+        try
+        {
+            if (cancellationTokenSource is not null)
+                await cancellationTokenSource.CancelAsync();
+            if (task is not null)
+                await task;
+        }
+        catch (OperationCanceledException) { }
+        finally
+        {
+            cancellationTokenSource?.Dispose();
+        }
     }
 
     private void StartHardwareSensorUpdates()
@@ -421,18 +453,35 @@ public abstract class OsdWindowBase : Window
         _sensorSubscription = _sensorsGroupControllers.Subscribe(TimeSpan.FromSeconds(_OsdSettings.Store.OsdRefreshInterval), _activeItems);
     }
 
-    private void OnWindowClosed(object? sender, EventArgs e)
+    private async void OnWindowClosed(object? sender, EventArgs e)
     {
+        _isClosed = true;
         _OsdSettings.SynchronizeStore();
 
         SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
         _sessionListener.Changed -= OnSessionLockStateChanged;
 
-        _ = StopSensorLoopAsync();
-        _refreshLock.Dispose();
+        await _visibilityLock.WaitAsync();
+        try
+        {
+            await StopSensorLoopAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to stop OSD sensor loop during close.", ex);
+        }
+        finally
+        {
+            _refreshLock.Dispose();
+            _visibilityLock.Release();
+        }
 
         _fpsController.FpsDataUpdated -= OnFpsDataUpdated;
-        _fpsController.Dispose();
+        if (_fpsMonitoringStarted)
+        {
+            _fpsMonitoringStarted = false;
+            StopFpsMonitoring();
+        }
 
         MessagingCenter.Unsubscribe(this);
 

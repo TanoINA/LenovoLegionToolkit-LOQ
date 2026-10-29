@@ -83,6 +83,9 @@ public partial class App
     private bool _showPawnIONotify;
 
     private readonly List<Task> _deferredInitTasks = [];
+    private readonly object _shutdownSync = new();
+    private Task? _shutdownTask;
+    private bool _shutdownStarted;
 
     public new static App Current => (App)Application.Current;
     public static MainWindow? MainWindowInstance;
@@ -172,6 +175,9 @@ public partial class App
             }
 
             await InitializeSettingsAndCompatibilityAsync();
+            if (Dispatcher.HasShutdownStarted)
+                return;
+
             await InitializeHardwareAndFeaturesAsync();
             IoCContainer.Resolve<ExtensionManager>().Load();
             var deferredInitTask = StartBackgroundServicesAsync();
@@ -269,6 +275,9 @@ public partial class App
             LocalizationHelper.SetLanguageAsync(true),
             CheckCompatibilityAsyncWrapper(AppFlags.Instance)
         );
+
+        if (Dispatcher.HasShutdownStarted)
+            return;
 
         await Compatibility.GetMachineInformationAsync();
 
@@ -478,7 +487,19 @@ public partial class App
         catch { /* Ignore */ }
     }
 
-    public async Task ShutdownAsync()
+    public Task ShutdownAsync()
+    {
+        lock (_shutdownSync)
+        {
+            if (_shutdownStarted)
+                return _shutdownTask ?? Task.CompletedTask;
+
+            _shutdownStarted = true;
+            return _shutdownTask = ShutdownCoreAsync();
+        }
+    }
+
+    private async Task ShutdownCoreAsync()
     {
         await SafeExecuteAsync<AIController>(c => c.StopAsync());
 
@@ -510,7 +531,8 @@ public partial class App
 
         feature.SaveShutdownInfo(cleanInfo);
 
-        Dispatcher.Invoke(Shutdown);
+        if (!Dispatcher.HasShutdownStarted)
+            Dispatcher.Invoke(Shutdown);
     }
 
     private static async Task SafeExecuteAsync<T>(Func<T, Task> action) where T : class
@@ -669,16 +691,10 @@ public partial class App
         {
             while (_singleInstanceWaitHandle.WaitOne())
             {
-                Dispatcher.BeginInvoke(async () =>
+                Dispatcher.BeginInvoke(() =>
                 {
                     if (MainWindow is { } window)
-                    {
                         window.BringToForeground();
-                    }
-                    else
-                    {
-                        await ShutdownAsync();
-                    }
                 });
             }
         }, TaskCreationOptions.LongRunning);

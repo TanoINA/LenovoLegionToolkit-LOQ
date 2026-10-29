@@ -148,6 +148,7 @@ public class SensorsGroupController : IDisposable
     private const int MIN_UPDATE_INTERVAL_MS = 100;
 
     private readonly Dictionary<object, SensorSubscription> _subscribers = [];
+    private readonly object _producerSync = new();
     private CancellationTokenSource? _producerCts;
     private Task? _producerTask;
     public event Action<HardwareSensorSnapshot>? SensorsUpdated;
@@ -719,17 +720,24 @@ public class SensorsGroupController : IDisposable
 
     private void UpdateProducerLoop()
     {
-        if (_subscribers.Count == 0)
+        lock (_producerSync)
         {
+            int subscriberCount;
+            lock (_subscribers)
+                subscriberCount = _subscribers.Count;
+
+            if (subscriberCount == 0)
+            {
+                StopProducerLoop();
+                return;
+            }
+
             StopProducerLoop();
-            return;
+
+            _producerCts = new CancellationTokenSource();
+            var token = _producerCts.Token;
+            _producerTask = Task.Run(() => ProducerLoop(token), token);
         }
-
-        StopProducerLoop();
-
-        _producerCts = new CancellationTokenSource();
-        var token = _producerCts.Token;
-        _producerTask = Task.Run(() => ProducerLoop(token), token);
     }
 
     private void StopProducerLoop()
@@ -822,7 +830,8 @@ public class SensorsGroupController : IDisposable
 
     public void Dispose()
     {
-        StopProducerLoop();
+        lock (_producerSync)
+            StopProducerLoop();
         _cpuProvider.SensorResetNeeded -= OnSensorResetNeeded;
         lock (_hardwareLock) { _computer?.Close(); _computer = null; _hardwareInitialized = false; }
         _initSemaphore.Dispose();

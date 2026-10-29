@@ -36,6 +36,7 @@ public sealed class AmdOverclockingController : IDisposable
     private MachineInformation? _machineInformation;
     private ManagementObject? _classInstance;
     private bool _isInitialized;
+    private bool _disposed;
 
     private List<AmdWmiCommand> _commandList = [];
     private AmdWmiCommand? _cachedDowncoreCmd;
@@ -270,11 +271,26 @@ public sealed class AmdOverclockingController : IDisposable
 
     public async Task ApplyProfileAsync(OverclockingProfile profile)
     {
+        await _lock.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await ApplyProfileCoreAsync(profile).ConfigureAwait(false);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    private async Task ApplyProfileCoreAsync(OverclockingProfile profile)
+    {
         if (DoNotApply)
         {
             Log.Instance.Trace($"Overclocking is disabled (DoNotApply). Skipping.");
             return;
         }
+
+        ValidateProfile(profile);
 
         if (!_settings.Store.AllowOnBattery)
         {
@@ -397,6 +413,23 @@ public sealed class AmdOverclockingController : IDisposable
         EnsureInitialized();
 
         return _cpu.GetPsmMarginSingleCore(EncodeCoreMarginBitmask(coreIndex)) != null;
+    }
+
+    private static void ValidateProfile(OverclockingProfile profile)
+    {
+        var limits = new short?[]
+        {
+            profile.PowerLimit1,
+            profile.PowerLimit2,
+            profile.PowerLimit3,
+            profile.TDCSoc,
+            profile.TDCVdd,
+            profile.EDCSoc,
+            profile.EDCVdd
+        };
+
+        if (limits.Any(value => value.HasValue && value.Value < 0))
+            throw new ArgumentOutOfRangeException(nameof(profile), "Power and current limits cannot be negative.");
     }
 
     private void ApplyAndLog<T>(string settingName, T? value, Action<T> applyAction) where T : struct
@@ -537,8 +570,24 @@ public sealed class AmdOverclockingController : IDisposable
 
     public void Dispose()
     {
-        _cpu?.Dispose();
-        _classInstance?.Dispose();
+        if (_disposed)
+            return;
+
+        _lock.Wait();
+        try
+        {
+            if (_disposed)
+                return;
+
+            _disposed = true;
+            _cpu?.Dispose();
+            _classInstance?.Dispose();
+        }
+        finally
+        {
+            _lock.Release();
+        }
+
         _lock.Dispose();
         GC.SuppressFinalize(this);
     }

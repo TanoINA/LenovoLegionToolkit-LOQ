@@ -96,28 +96,26 @@ public class PowerModeConcurrencyTests
     [TestMethod]
     public async Task ThrottleLastDispatcher_RapidDispatches_ExecutesOnlyTrailingTask()
     {
-        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMilliseconds(50), "TestDispatcher");
+        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromSeconds(1), "TestDispatcher");
         var executionCount = 0;
         var lastExecutedValue = -1;
-
         var tasks = new List<Task>();
+
         for (var i = 0; i < 50; i++)
         {
             var value = i;
             tasks.Add(dispatcher.DispatchAsync(() =>
             {
                 Interlocked.Increment(ref executionCount);
-                lastExecutedValue = value;
+                Interlocked.Exchange(ref lastExecutedValue, value);
                 return Task.CompletedTask;
             }));
-            await Task.Delay(2);
         }
 
         await Task.WhenAll(tasks);
-        await Task.Delay(100);
 
-        Assert.AreEqual(49, lastExecutedValue, "Only the last dispatched work must execute.");
-        Assert.IsTrue(executionCount <= 2, $"Execution count should be throttled (expected <= 2, got {executionCount})");
+        Assert.AreEqual(1, executionCount, "Only the trailing dispatch should execute.");
+        Assert.AreEqual(49, lastExecutedValue, "The trailing dispatch must preserve its own callback.");
     }
 
     [TestMethod]
@@ -134,24 +132,21 @@ public class PowerModeConcurrencyTests
     [TestMethod]
     public async Task ThrottleLastDispatcher_ImmediateDispatch_OverridesPendingDelayed()
     {
-        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMilliseconds(100), "TestDispatcher");
+        var dispatcher = new ThrottleLastDispatcher(TimeSpan.FromMinutes(1), "TestDispatcher");
         var executed = new List<string>();
 
-        _ = dispatcher.DispatchAsync(() =>
+        var delayedDispatch = dispatcher.DispatchAsync(() =>
         {
             executed.Add("delayed");
             return Task.CompletedTask;
         });
-
-        await Task.Delay(10);
 
         await dispatcher.DispatchImmediateAsync(() =>
         {
             executed.Add("immediate");
             return Task.CompletedTask;
         });
-
-        await Task.Delay(150);
+        await delayedDispatch;
 
         CollectionAssert.AreEqual(new[] { "immediate" }, executed, "Immediate dispatch must supersede pending delayed dispatch.");
     }
