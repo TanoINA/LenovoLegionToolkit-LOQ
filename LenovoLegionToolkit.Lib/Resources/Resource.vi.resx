@@ -219,9 +219,6 @@
   <data name="GB" xml:space="preserve">
     <value>GB</value>
   </data>
-  <data name="GodModeController_FanSetTableError_Message" xml:space="preserve">
-    <value>Xác minh bảng quạt không thành công.</value>
-  </data>
   <data name="GPUController_GC6_Blocker_Acpi" xml:space="preserve">
     <value>ACPI</value>
   </data>
@@ -480,7 +477,7 @@
     <value>Im Lặng</value>
   </data>
   <data name="RefreshRate_Dynamic" xml:space="preserve">
-    <value>Dynamic ({0} Hz)</value>
+    <value>Động ({0} Hz hoặc {1} Hz)</value>
   </data>
   <data name="RGBKeyboardBacklightBrightness_High" xml:space="preserve">
     <value>Cao</value>
@@ -533,6 +530,15 @@
   <data name="SharedMemory" xml:space="preserve">
     <value>Chia sẻ / Động</value>
   </data>
+  <data name="SoftwareDisabler_ProcessesStillRunning_Message" xml:space="preserve">
+    <value>Các tiến trình vẫn đang chạy: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesRequiringRestart_Message" xml:space="preserve">
+    <value>Các dịch vụ cần khởi động lại: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesStillRunning_Message" xml:space="preserve">
+    <value>Các dịch vụ vẫn đang chạy: {0}.</value>
+  </data>
   <data name="SpeakerState_Mute" xml:space="preserve">
     <value>Tắt tiếng</value>
   </data>
@@ -581,6 +587,9 @@
   <data name="SpectrumKeyboardBacklightEffectType_AuroraSync" xml:space="preserve">
     <value>Đồng bộ Aurora</value>
   </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Breath" xml:space="preserve">
+    <value>Hơi thở</value>
+  </data>
   <data name="SpectrumKeyboardBacklightEffectType_ColorChange" xml:space="preserve">
     <value>Đổi màu</value>
   </data>
@@ -588,25 +597,31 @@
     <value>Nhịp điệu</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_ColorWave" xml:space="preserve">
-    <value>Sóng 7 màu</value>
+    <value>Sóng màu</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Rain" xml:space="preserve">
-    <value>Mưa</value>
+  <data name="SpectrumKeyboardBacklightEffectType_HorseRaceLamp" xml:space="preserve">
+    <value>Đèn đua ngựa</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_RainbowScrew" xml:space="preserve">
-    <value>Xoáy cầu vồng</value>
+  <data name="SpectrumKeyboardBacklightEffectType_Lighting" xml:space="preserve">
+    <value>Tia chớp</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_RainbowWave" xml:space="preserve">
     <value>Sóng cầu vồng</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Ripple" xml:space="preserve">
+  <data name="SpectrumKeyboardBacklightEffectType_Raining" xml:space="preserve">
+    <value>Mưa</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Ripples" xml:space="preserve">
     <value>Gợn sóng</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_Smooth" xml:space="preserve">
     <value>Mượt</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Type" xml:space="preserve">
-    <value>Gõ</value>
+  <data name="SpectrumKeyboardBacklightEffectType_SpiralRainbow" xml:space="preserve">
+    <value>Cầu vồng xoắn ốc</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Wave" xml:space="preserve">
+    <value>Sóng</value>
   </data>
   <data name="SpectrumKeyboardBacklightSpeed_Speed1" xml:space="preserve">
     <value>Chậm</value>
@@ -661,6 +676,9 @@
   <data name="UpdateChannel_Test" xml:space="preserve">
     <value>Kiểm tra</value>
   </data>
+  <data name="UpdateChecker_Security_Authenticode" xml:space="preserve">
+    <value>Bản cập nhật tải về đã thất bại trong việc xác minh chữ ký Authenticode ({0})</value>
+  </data>
   <data name="UpdateChecker_Security_Invalid" xml:space="preserve">
     <value>Gói tập tin cập nhật chưa được kí bởi bên phía máy chủ {0}</value>
   </data>
@@ -693,6 +711,9 @@
   </data>
   <data name="UpdateMethod_Server" xml:space="preserve">
     <value>Máy chủ</value>
+  </data>
+  <data name="WhiteKeyboardBacklightState_Auto" xml:space="preserve">
+    <value>Tự động</value>
   </data>
   <data name="WhiteKeyboardBacklightState_High" xml:space="preserve">
     <value>Cao</value>

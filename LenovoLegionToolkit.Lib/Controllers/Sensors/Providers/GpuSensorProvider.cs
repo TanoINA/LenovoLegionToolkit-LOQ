@@ -12,14 +12,14 @@ public partial class GpuSensorProvider : ISensorProvider
 {
     private const float MinTemp = 0f;
     private const float MaxTemp = 150f;
-    private const float MB_PER_GB = 1024f;
+    private const float BYTES_PER_GB = 1024f * 1024f * 1024f;
     private const float MIN_ACTIVE_GPU_POWER = 10f;
 
-    private const string REGEX_AMD_GPU_INTEGRATED = @"AMD Radeon(?:\(TM\))?\s+\d+M";
+    private const string REGEX_AMD_GPU_INTEGRATED = @"AMD Radeon(?:\s*\(TM\))?\s*(?:\d+M\b|Graphics\b)";
 
     private const string INTEGRATED_IDENTIFIER = "integrated";
 
-    [GeneratedRegex(REGEX_AMD_GPU_INTEGRATED, RegexOptions.IgnoreCase, "zh-CN")]
+    [GeneratedRegex(REGEX_AMD_GPU_INTEGRATED, RegexOptions.IgnoreCase | RegexOptions.CultureInvariant)]
     private static partial Regex IsAmdIGpu();
 
     private static readonly string[] TempFallback = ["Average", "GPU Core", "Junction", "Hot Spot", "Temperature"];
@@ -153,8 +153,8 @@ public partial class GpuSensorProvider : ISensorProvider
         if (vramTotalRaw <= 0 && sensors.TryGetValue(SensorItem.GpuVramTotal, out var vramTotalSensor) && vramTotalSensor != null)
             vramTotalRaw = vramTotalSensor.Value ?? -1;
 
-        values[SensorItem.GpuVramUsed] = raw > 0 ? raw / MB_PER_GB : raw;
-        values[SensorItem.GpuVramTotal] = vramTotalRaw > 0 ? vramTotalRaw / MB_PER_GB : -1;
+        values[SensorItem.GpuVramUsed] = raw > 0 ? raw / BYTES_PER_GB : raw;
+        values[SensorItem.GpuVramTotal] = vramTotalRaw > 0 ? vramTotalRaw / BYTES_PER_GB : -1;
         values[SensorItem.GpuVramUtilization] = (raw != -1 && vramTotalRaw > 0) ? (raw / vramTotalRaw) * 100f : -1;
 
         if (dgpu && values.TryGetValue(SensorItem.GpuPower, out var power))

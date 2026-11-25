@@ -14,6 +14,7 @@ using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
 using NvAPIWrapper.GPU;
+using NvAPIWrapper.Native.Exceptions;
 
 namespace LenovoLegionToolkit.Lib.Controllers.GodMode;
 
@@ -33,6 +34,7 @@ public class GodModeController(
     private GodModePlatformConfiguration? _config;
     private MachineInformation? _mi;
     private bool _hasCapabilityErrors;
+    private bool? _pcfAvailable;
 
     public bool HasCapabilityErrors() => _hasCapabilityErrors;
 
@@ -822,7 +824,7 @@ public class GodModeController(
             return;
         }
 
-        if (config.Capabilities.Any(IsNvApiCapability))
+        if (config.Capabilities.Any(IsNvApiCapability) || GetNativePowerTarget(config) is not null)
         {
             try
             {
@@ -997,12 +999,12 @@ public class GodModeController(
                 await Task.Delay(delayMs).ConfigureAwait(false);
 
                 var readBack1 = await WMI.LenovoFanMethod.FanGetTableAsync(1, 1).ConfigureAwait(false);
-                bool firstMatch = readBack1.Length == 10 && readBack1.Select(b => (ushort)b).SequenceEqual(expected);
+                bool firstMatch = readBack1.Length == 10 && readBack1.SequenceEqual(expected.Select(value => (uint)value));
                 Log.Instance.Trace($"Fan table verify attempt {attempt}, read 1: {(firstMatch ? "OK" : "Mismatch")}");
 
                 await Task.Delay(delayMs).ConfigureAwait(false);
                 var readBack2 = await WMI.LenovoFanMethod.FanGetTableAsync(1, 1).ConfigureAwait(false);
-                bool secondMatch = readBack2.Length == 10 && readBack2.Select(b => (ushort)b).SequenceEqual(expected);
+                bool secondMatch = readBack2.Length == 10 && readBack2.SequenceEqual(expected.Select(value => (uint)value));
                 Log.Instance.Trace($"Fan table verify attempt {attempt}, read 2: {(secondMatch ? "OK" : "Mismatch")}");
 
                 if (firstMatch && secondMatch)
@@ -1018,18 +1020,21 @@ public class GodModeController(
                 Log.Instance.Trace($"Fan table verify attempt {attempt} transient error: {ex.Message}. Retrying...");
                 if (attempt == maxAttempts)
                 {
-                    throw new Exception(Resource.GodModeController_FanSetTableError_Message);
+                    _hasCapabilityErrors = true;
+                    return false;
                 }
             }
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Fan table verify attempt {attempt} fatal error: {ex.Message}.");
-                throw new Exception(Resource.GodModeController_FanSetTableError_Message);
+                _hasCapabilityErrors = true;
+                return false;
             }
         }
 
         Log.Instance.Trace($"Fan table verification failed after {maxAttempts} attempts.");
-        throw new Exception(Resource.GodModeController_FanSetTableError_Message);
+        _hasCapabilityErrors = true;
+        return false;
     }
 
     public Task<FanTable> GetDefaultFanTableAsync()
@@ -1103,7 +1108,7 @@ public class GodModeController(
             .Where(d => d.mode == (int)powerModeState + 1)
             .Select(d =>
             {
-                var type = ResolveFanTableType(d.fanId, d.sensorId, mi.SmartFanVersion, mi);
+                var type = FanTableTypeResolver.Resolve(d.fanId, d.sensorId, mi.SmartFanVersion, mi);
                 return new FanTableData(type, d.fanId, d.sensorId, d.fanTableData, d.sensorTableData);
             })
             .ToArray();
@@ -1116,53 +1121,6 @@ public class GodModeController(
 
         Log.Instance.Trace($"Fan table data retrieved.");
         return fanTableData;
-    }
-
-    private static FanTableType ResolveFanTableType(byte fanId, byte sensorId, int smartFanVersion, MachineInformation mi)
-    {
-        if (smartFanVersion <= 7)
-        {
-            return (fanId, sensorId, smartFanVersion) switch
-            {
-                (1, 1, 8) => FanTableType.CPU,
-                (2, 5, 8) => FanTableType.GPU,
-                (4, 4, 8) => FanTableType.GPU2,
-                (1, 4, <= 8) => FanTableType.CPU,
-                (1, 1, <= 8) => FanTableType.CPUSensor,
-                (2, 5, <= 8) => FanTableType.GPU,
-                (3, 5, <= 8) => FanTableType.GPU2,
-                _ => FanTableType.Unknown,
-            };
-        }
-
-        var isV3Model = GetIsV3StyleModel(mi);
-        if (isV3Model)
-        {
-            return (fanId, sensorId) switch
-            {
-                (1, 1) => FanTableType.CPU,
-                (2, 5) => FanTableType.GPU,
-                (1, 4) => FanTableType.PCH,
-                _ => FanTableType.Unknown,
-            };
-        }
-
-        return (fanId, sensorId) switch
-        {
-            (1, 1) or (1, 4) => FanTableType.CPU,
-            (2, 5) => FanTableType.GPU,
-            (4, 4) or (5, 5) or (4, 1) => FanTableType.PCH,
-            _ => FanTableType.Unknown,
-        };
-    }
-
-    private static bool GetIsV3StyleModel(MachineInformation mi)
-    {
-        var affectedSeries = new[] { LegionSeries.Legion_5, LegionSeries.Legion_7 };
-        var affectedModels = new[] { "Legion 5", "Legion 7", "Legion Pro 5 16IAX10H", "LOQ", "Y7000", "R7000" };
-        var isAffectedSeries = affectedSeries.Any(s => Compatibility.GetLegionSeries(mi.Model, mi.MachineType) == s);
-        var isAffectedModel = affectedModels.Any(m => mi.Model.Contains(m));
-        return (isAffectedSeries || isAffectedModel) && mi.Generation >= 10;
     }
 
     private static bool IsValidFanTableData(FanTableData[]? fanTableData)
@@ -1240,10 +1198,79 @@ public class GodModeController(
             ? GetPcfTotalProcessingPowerTargetOffsetAsync()
             : GetValueAsync(capability.RawId, mask);
 
-    private static Task SetCapabilityValueAsync(GodModeCapabilityEntry capability, int value, uint mask) =>
-        IsNvApiCapability(capability)
-            ? SetPcfTotalProcessingPowerTargetOffsetAsync(value)
-            : SetValueAsync(capability.RawId, value, mask);
+    private async Task SetCapabilityValueAsync(GodModeCapabilityEntry capability, int value, uint mask)
+    {
+        if (capability.PropertyName == nameof(GodModePreset.GPUTotalProcessingPowerTargetOnAcOffsetFromBaseline))
+        {
+            if (value > byte.MaxValue)
+            {
+                if (!IsPcfAvailable())
+                {
+                    Log.Instance.Trace($"Cannot apply {capability.PropertyName} above {byte.MaxValue} without NVIDIA PCF support. [value={value}]");
+                    _hasCapabilityErrors = true;
+                    return;
+                }
+
+                try
+                {
+                    await SetPcfTotalProcessingPowerTargetOffsetAsync(value).ConfigureAwait(false);
+                }
+                catch (Exception ex) when (ex is NVIDIAApiException || ex is NVIDIANotSupportedException)
+                {
+                    Log.Instance.Trace($"Failed to apply {capability.PropertyName} through NVIDIA PCF. [value={value}]", ex);
+                    _hasCapabilityErrors = true;
+                }
+
+                return;
+            }
+
+            if (IsPcfAvailable())
+                await ResetPcfPowerTargetOffsetIfNeededAsync(value).ConfigureAwait(false);
+        }
+
+        if (IsNvApiCapability(capability))
+            await SetPcfTotalProcessingPowerTargetOffsetAsync(value).ConfigureAwait(false);
+        else
+            await SetValueAsync(capability.RawId, value, mask).ConfigureAwait(false);
+    }
+
+    private async Task ResetPcfPowerTargetOffsetIfNeededAsync(int value)
+    {
+        try
+        {
+            if (await GetPcfTotalProcessingPowerTargetOffsetAsync().ConfigureAwait(false) != value)
+                await ResetTotalProcessingPowerTargetOffsetAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is NVIDIAApiException || ex is NVIDIANotSupportedException)
+        {
+            Log.Instance.Trace($"Failed to release the NVIDIA PCF power target offset.", ex);
+        }
+    }
+
+    public bool IsPcfAvailable()
+    {
+        if (_pcfAvailable is { } available)
+            return available;
+
+        available = false;
+
+        if (NVAPI.IsAvailable())
+        {
+            try
+            {
+                using var controller = new PcfPowerController();
+                controller.GetPowerValues();
+                available = true;
+            }
+            catch (Exception ex) when (ex is NVIDIANotSupportedException || ex is NVIDIAApiException)
+            {
+                Log.Instance.Trace($"NVIDIA PCF power control is not available.", ex);
+            }
+        }
+
+        _pcfAvailable = available;
+        return available;
+    }
 
     private static StepperValue CreateCapabilityStepperValue(GodModeCapabilityEntry capability, int value)
     {
@@ -1470,6 +1497,12 @@ public class GodModeController(
                 GodModePlatform.NonGaming => GodModePlatformConfiguration.NonGaming,
                 _ => throw new InvalidOperationException("Unsupported GodMode platform"),
             };
+
+            if (await HasNativePowerTargetAsync(_config).ConfigureAwait(false))
+            {
+                Log.Instance.Trace($"Native power target capability is available, removing the NVAPI one...");
+                _config = _config with { Capabilities = _config.Capabilities.Where(c => !IsNvApiCapability(c)).ToList() };
+            }
         }
 
         var config = _config;
@@ -1481,6 +1514,21 @@ public class GodModeController(
         Log.Instance.Trace($"NVAPI is not available, removing NVAPI capabilities...");
 
         return config with { Capabilities = config.Capabilities.Where(c => !IsNvApiCapability(c)).ToList() };
+    }
+
+    private static GodModeCapabilityEntry? GetNativePowerTarget(GodModePlatformConfiguration config) =>
+        config.Capabilities.FirstOrDefault(c =>
+            !IsNvApiCapability(c) &&
+            c.PropertyName == nameof(GodModePreset.GPUTotalProcessingPowerTargetOnAcOffsetFromBaseline));
+
+    private async Task<bool> HasNativePowerTargetAsync(GodModePlatformConfiguration config)
+    {
+        var capability = GetNativePowerTarget(config);
+
+        if (capability is null)
+            return false;
+
+        return await GetValueAsync(capability.RawId, config.CapabilityIdMask).OrNullIfException().ConfigureAwait(false) is not null;
     }
 
     private async Task<MachineInformation> GetMachineInformationAsync()

@@ -250,9 +250,9 @@ public class UpdateChecker
                         await using var fileStream = File.OpenWrite(tempPath);
                         await httpClient.DownloadAsync(UpdateFromServer.Value.Url, fileStream, progress, cancellationToken, version).ConfigureAwait(false);
                     }
-
-                    VerifySignature(tempPath);
                 }
+
+                await Task.Run(() => VerifySignature(tempPath), cancellationToken).ConfigureAwait(false);
 
                 return tempPath;
             }
@@ -311,6 +311,10 @@ public class UpdateChecker
             catch { /* Ignore */ }
 
             Log.Instance.Trace($"Signature verification failed for '{filePath}': {ex.Message}");
+
+            if (ex is SecurityException)
+                throw;
+
             throw new SecurityException(string.Format(Resource.UpdateChecker_Security_Invalid, ex.Message), ex);
         }
     }

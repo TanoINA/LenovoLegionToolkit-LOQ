@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using LenovoLegionToolkit.Lib.System.Management;
 using LenovoLegionToolkit.Lib.Utils;
@@ -29,13 +30,13 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
         FanTableEndpoint Cpu,
         FanTableEndpoint Gpu,
         FanTableEndpoint[] Required,
-        FanTableEndpoint[] PchFans,
+        SystemFanDefinition[] SystemFans,
         ValueSource TemperatureSource,
         ValueSource FanSpeedSource,
         MaxFanSpeedSource MaxFanSpeedSource,
         int CpuTemperatureSensorId,
         int GpuTemperatureSensorId,
-        bool HasPchTemperature);
+        bool HasMotherboardTemperature);
 
     private static readonly Profile[] FanTableProfiles =
     [
@@ -43,108 +44,130 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
             Cpu: new(4, 1),
             Gpu: new(5, 2),
             Required: [],
-            PchFans: [new(1, 4), new(5, 5)],
+            SystemFans: [new(1, 4, CapabilityID.SystemCurrentFanSpeed, 1), new(5, 5, CapabilityID.ExtraSystemCurrentFanSpeed, 2)],
             TemperatureSource: ValueSource.Capability,
             FanSpeedSource: ValueSource.Capability,
             MaxFanSpeedSource: MaxFanSpeedSource.CurrentTable,
             CpuTemperatureSensorId: 0,
             GpuTemperatureSensorId: 0,
-            HasPchTemperature: true),
+            HasMotherboardTemperature: true),
         new(
             Cpu: new(1, 1),
             Gpu: new(5, 2),
             Required: [],
-            PchFans: [new(4, 4)],
+            SystemFans: [new(4, 4, CapabilityID.SystemCurrentFanSpeed, 1)],
             TemperatureSource: ValueSource.Capability,
             FanSpeedSource: ValueSource.Capability,
             MaxFanSpeedSource: MaxFanSpeedSource.CurrentTable,
             CpuTemperatureSensorId: 0,
             GpuTemperatureSensorId: 0,
-            HasPchTemperature: true),
+            HasMotherboardTemperature: true),
         new(
             Cpu: new(1, 1),
             Gpu: new(5, 2),
             Required: [new(4, 1)],
-            PchFans: [],
+            SystemFans: [],
             TemperatureSource: ValueSource.Capability,
             FanSpeedSource: ValueSource.Capability,
             MaxFanSpeedSource: MaxFanSpeedSource.CurrentTable,
             CpuTemperatureSensorId: 0,
             GpuTemperatureSensorId: 0,
-            HasPchTemperature: true),
+            HasMotherboardTemperature: true),
         new(
             Cpu: new(4, 1),
             Gpu: new(5, 2),
             Required: [],
-            PchFans: [],
+            SystemFans: [],
             TemperatureSource: ValueSource.Capability,
             FanSpeedSource: ValueSource.Capability,
             MaxFanSpeedSource: MaxFanSpeedSource.CurrentTable,
             CpuTemperatureSensorId: 0,
             GpuTemperatureSensorId: 0,
-            HasPchTemperature: false),
+            HasMotherboardTemperature: false),
         new(
             Cpu: new(3, 0),
             Gpu: new(4, 1),
             Required: [],
-            PchFans: [],
+            SystemFans: [],
             TemperatureSource: ValueSource.FanMethod,
             FanSpeedSource: ValueSource.FanMethod,
             MaxFanSpeedSource: MaxFanSpeedSource.CurrentTable,
             CpuTemperatureSensorId: 3,
             GpuTemperatureSensorId: 4,
-            HasPchTemperature: false),
+            HasMotherboardTemperature: false),
         new(
             Cpu: new(0, 0),
             Gpu: new(0, 1),
             Required: [],
-            PchFans: [],
+            SystemFans: [],
             TemperatureSource: ValueSource.FanMethod,
             FanSpeedSource: ValueSource.FanMethod,
             MaxFanSpeedSource: MaxFanSpeedSource.DefaultTable,
             CpuTemperatureSensorId: 3,
             GpuTemperatureSensorId: 4,
-            HasPchTemperature: false)
+            HasMotherboardTemperature: false)
     ];
 
     private static readonly Profile FanTestDataProfile = new(
         Cpu: new(0, 1),
         Gpu: new(0, 2),
         Required: [],
-        PchFans: [],
+        SystemFans: [],
         TemperatureSource: ValueSource.None,
         FanSpeedSource: ValueSource.Capability,
         MaxFanSpeedSource: MaxFanSpeedSource.FanTestData,
         CpuTemperatureSensorId: 0,
         GpuTemperatureSensorId: 0,
-        HasPchTemperature: false);
+        HasMotherboardTemperature: false);
 
+    private readonly SemaphoreSlim _initSemaphore = new(1, 1);
     private Profile? _profile;
 
-    public override bool HasPchFan => _profile?.PchFans.Length > 0;
+    protected override IReadOnlyList<SystemFanDefinition> SystemFanDefinitions => _profile?.SystemFans ?? [];
 
     public override async Task<bool> IsSupportedAsync()
     {
-        if (_profile is not null)
+        await _initSemaphore.WaitAsync().ConfigureAwait(false);
+        try
         {
+            if (_profile is not null)
+            {
+                return true;
+            }
+
+            var profile = await FindFanTableProfileAsync().ConfigureAwait(false);
+            if (profile is null && await HasFanTestDataAsync().ConfigureAwait(false))
+            {
+                profile = FanTestDataProfile;
+            }
+
+            if (profile is null)
+            {
+                return false;
+            }
+
+            _profile = profile;
+            try
+            {
+                _ = await base.GetFanSpeedsAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                // Keep valid fan-table profile; transient read errors must not mark controller unsupported.
+                Log.Instance.Trace($"Initial fan speed read failed. [type={GetType().Name}]", ex);
+            }
             return true;
         }
-
-        var profile = await FindFanTableProfileAsync().ConfigureAwait(false);
-        if (profile is null && await HasFanTestDataAsync().ConfigureAwait(false))
+        catch (Exception ex)
         {
-            profile = FanTestDataProfile;
-        }
-
-        if (profile is null)
-        {
+            _profile = null;
+            Log.Instance.Trace($"Error checking support. [type={GetType().Name}]", ex);
             return false;
         }
-
-        _profile = profile;
-        // Fan-table support and live sensor reads have different failure modes.
-        // A transient WMI/NVAPI error must not reclassify the controller as unsupported.
-        return true;
+        finally
+        {
+            _initSemaphore.Release();
+        }
     }
 
     public async Task<ISensorsController?> GetControllerAsync() =>
@@ -152,13 +175,21 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
 
     public override async Task<SensorsData> GetDataAsync()
     {
-        await IsSupportedAsync().ConfigureAwait(false);
+        if (!await IsSupportedAsync().ConfigureAwait(false))
+        {
+            return SensorsData.Empty;
+        }
+
         return await base.GetDataAsync().ConfigureAwait(false);
     }
 
     public override async Task<FanSpeedTable> GetFanSpeedsAsync()
     {
-        await IsSupportedAsync().ConfigureAwait(false);
+        if (!await IsSupportedAsync().ConfigureAwait(false))
+        {
+            return new FanSpeedTable(-1, -1, []);
+        }
+
         return await base.GetFanSpeedsAsync().ConfigureAwait(false);
     }
 
@@ -168,8 +199,8 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
     protected override Task<int> GetGpuCurrentTemperatureAsync() =>
         GetTemperatureAsync(GetProfile().TemperatureSource, CapabilityID.GpuCurrentTemperature, GetProfile().GpuTemperatureSensorId);
 
-    protected override Task<int> GetPchCurrentTemperatureAsync() => GetProfile().HasPchTemperature
-        ? GetCapabilityValueAsync(CapabilityID.PchCurrentTemperature)
+    protected override Task<int> GetMotherboardTemperatureAsync() => GetProfile().HasMotherboardTemperature
+        ? GetCapabilityValueAsync(CapabilityID.MotherboardCurrentTemperature)
         : Task.FromResult(-1);
 
     protected override Task<int> GetCpuCurrentFanSpeedAsync() =>
@@ -178,40 +209,53 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
     protected override Task<int> GetGpuCurrentFanSpeedAsync() =>
         GetFanSpeedAsync(GetProfile().FanSpeedSource, CapabilityID.GpuCurrentFanSpeed, GetProfile().Gpu.FanId);
 
-    protected override Task<int> GetPchCurrentFanSpeedAsync() => HasPchFan
-        ? GetCapabilityValueAsync(CapabilityID.PchCurrentFanSpeed)
-        : Task.FromResult(-1);
+    protected override Task<int> GetSystemFanSpeedAsync(SystemFanDefinition definition) =>
+        GetFanSpeedAsync(GetProfile().FanSpeedSource, definition.SpeedCapability, definition.FanId);
+
+    protected override Task<int> GetSystemFanMaxSpeedAsync(SystemFanDefinition definition) =>
+        GetMaxFanSpeedAsync(GetProfile(), new FanTableEndpoint(definition.SensorId, definition.FanId));
 
     protected override Task<int> GetCpuMaxFanSpeedAsync() => GetMaxFanSpeedAsync(GetProfile(), GetProfile().Cpu);
 
     protected override Task<int> GetGpuMaxFanSpeedAsync() => GetMaxFanSpeedAsync(GetProfile(), GetProfile().Gpu);
-
-    protected override async Task<int> GetPchMaxFanSpeedAsync()
-    {
-        var profile = GetProfile();
-        if (profile.PchFans.Length == 0)
-            return -1;
-
-        var speeds = await Task.WhenAll(profile.PchFans.Select(endpoint =>
-            GetMaxFanSpeedAsync(profile, endpoint))).ConfigureAwait(false);
-        return speeds.Max();
-    }
 
     private static async Task<Profile?> FindFanTableProfileAsync()
     {
         try
         {
             var data = await WMI.LenovoFanTableData.ReadAsync().ConfigureAwait(false);
-            var endpoints = data
-                .Select(item => new FanTableEndpoint(item.sensorId, item.fanId))
-                .ToHashSet();
-
-            return FanTableProfiles.FirstOrDefault(profile => GetRequiredEndpoints(profile).All(endpoints.Contains));
+            return SelectFanTableProfile(data.Select(item => ((int)item.sensorId, (int)item.fanId)));
         }
         catch
         {
             return null;
         }
+    }
+
+    private static Profile? SelectFanTableProfile(IEnumerable<(int sensorId, int fanId)> data)
+    {
+        var endpoints = data.Select(item => new FanTableEndpoint(item.sensorId, item.fanId)).ToHashSet();
+
+        foreach (var profile in FanTableProfiles)
+        {
+            if (!GetRequiredEndpoints(profile).All(endpoints.Contains))
+            {
+                continue;
+            }
+
+            var systemFans = profile.SystemFans
+                .Where(fan => endpoints.Contains(new FanTableEndpoint(fan.SensorId, fan.FanId)))
+                .ToArray();
+
+            if (profile.SystemFans.Length > 0 && systemFans.Length == 0)
+            {
+                continue;
+            }
+
+            return profile with { SystemFans = systemFans };
+        }
+
+        return null;
     }
 
     private static async Task<bool> HasFanTestDataAsync()
@@ -264,11 +308,6 @@ public class SensorsController(GPUController gpuController) : AbstractSensorsCon
     {
         yield return profile.Cpu;
         yield return profile.Gpu;
-
-        foreach (var endpoint in profile.PchFans)
-        {
-            yield return endpoint;
-        }
 
         foreach (var endpoint in profile.Required)
         {

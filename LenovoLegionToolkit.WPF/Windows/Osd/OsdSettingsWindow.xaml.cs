@@ -27,6 +27,7 @@ public partial class OsdSettingsWindow
 {
     private readonly OsdSettings _OsdSettings = IoCContainer.Resolve<OsdSettings>();
     private readonly SensorsGroupController _controller = IoCContainer.Resolve<SensorsGroupController>();
+    private readonly SensorsController _fanController = IoCContainer.Resolve<SensorsController>();
     private bool _isInitializing = true;
 
     public OsdSettingsWindow()
@@ -35,8 +36,9 @@ public partial class OsdSettingsWindow
         this.Loaded += OsdSettingsWindow_Loaded;
     }
 
-    private void OsdSettingsWindow_Loaded(object sender, RoutedEventArgs e)
+    private async void OsdSettingsWindow_Loaded(object sender, RoutedEventArgs e)
     {
+        await _fanController.IsSupportedAsync();
         InitializeCheckboxes();
 
         _osdRefreshInterval.Value = _OsdSettings.Store.OsdRefreshInterval;
@@ -89,6 +91,7 @@ public partial class OsdSettingsWindow
 
     private void InitializeCheckboxes()
     {
+        _itemsStackPanel.Children.Clear();
         var groups = new List<OsdItemGroup>
         {
             new OsdItemGroup { Header = Resource.Osd_Game, Items =
@@ -110,11 +113,11 @@ public partial class OsdSettingsWindow
                     OsdItem.GpuPower, OsdItem.GpuFan
                 ]
             },
-            new OsdItemGroup { Header = Resource.Osd_Pch, Items =
+            new OsdItemGroup { Header = Resource.SensorsControl_MOBO_Title, Items =
                 [
                     OsdItem.MemoryUtilization, OsdItem.MemoryTemperature,
                     OsdItem.Disk1Temperature, OsdItem.Disk2Temperature,
-                    OsdItem.PchTemperature, OsdItem.PchFan
+                    OsdItem.MotherboardTemperature, OsdItem.SystemFans
                 ]
             }
         };
@@ -163,6 +166,24 @@ public partial class OsdSettingsWindow
 
             foreach (var item in group.Items)
             {
+                if (item == OsdItem.SystemFans)
+                {
+                    foreach (var fan in _fanController.SystemFans)
+                    {
+                        var fanCheckBox = new CheckBox
+                        {
+                            Content = $"{Resource.SensorsControl_Fan_Title} {fan.DisplayNumber}",
+                            Tag = fan.FanId,
+                            IsChecked = activeItems.Contains(item) &&
+                                (_OsdSettings.Store.VisibleSystemFanIds is not { } ids || ids.Contains(fan.FanId))
+                        };
+                        fanCheckBox.Checked += CheckBox_CheckedOrUnchecked;
+                        fanCheckBox.Unchecked += CheckBox_CheckedOrUnchecked;
+                        stackPanel.Children.Add(fanCheckBox);
+                    }
+                    continue;
+                }
+
                 var checkBox = new CheckBox
                 {
                     Content = item.GetDisplayName(),
@@ -184,11 +205,21 @@ public partial class OsdSettingsWindow
         if (_isInitializing) return;
 
         var selectedItems = new List<OsdItem>();
+        var selectedFanIds = new List<int>();
+        var hasSystemFanCheckBoxes = false;
 
         foreach (var stackPanel in _itemsStackPanel.Children.OfType<StackPanel>())
         {
             foreach (var child in stackPanel.Children.OfType<CheckBox>())
             {
+                if (child.Tag is int fanId)
+                {
+                    hasSystemFanCheckBoxes = true;
+
+                    if (child.IsChecked == true)
+                        selectedFanIds.Add(fanId);
+                }
+
                 if (child is { IsChecked: true, Tag: OsdItem item })
                 {
                     selectedItems.Add(item);
@@ -196,6 +227,9 @@ public partial class OsdSettingsWindow
             }
         }
 
+        if (selectedFanIds.Count > 0)
+            selectedItems.Add(OsdItem.SystemFans);
+        _OsdSettings.Store.VisibleSystemFanIds = hasSystemFanCheckBoxes ? selectedFanIds.ToArray() : null;
         _OsdSettings.Store.Items = selectedItems;
         _OsdSettings.SynchronizeStore();
         MessagingCenter.Publish(new OsdElementChangedMessage(selectedItems));

@@ -10,7 +10,6 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Threading;
-using Microsoft.Win32;
 using LenovoLegionToolkit.Lib;
 using LenovoLegionToolkit.Lib.Controllers.Sensors;
 using LenovoLegionToolkit.Lib.Listeners;
@@ -18,9 +17,9 @@ using LenovoLegionToolkit.Lib.Messaging;
 using LenovoLegionToolkit.Lib.Messaging.Messages;
 using LenovoLegionToolkit.Lib.Settings;
 using LenovoLegionToolkit.Lib.Utils;
-using LenovoLegionToolkit.WPF.Resources;
-using LenovoLegionToolkit.WPF.Settings;
 using LenovoLegionToolkit.WPF.Extensions;
+using LenovoLegionToolkit.WPF.Resources;
+using Microsoft.Win32;
 using WpfScreenHelper;
 
 namespace LenovoLegionToolkit.WPF.Windows.Osd;
@@ -75,6 +74,7 @@ public abstract class OsdWindowBase : Window
     private bool _hasLenovoController;
     private bool _wasVisibleBeforeLock;
 
+    private int VisibleSystemFanCount { get; set; }
     protected HashSet<OsdItem> _activeItems = [];
     protected Dictionary<OsdItem, FrameworkElement> _itemsMap = [];
     protected Dictionary<FrameworkElement, (List<OsdItem> Items, FrameworkElement? Separator)> _measurementGroups = [];
@@ -118,15 +118,13 @@ public abstract class OsdWindowBase : Window
             _hasLenovoController = false;
         }
 
+        if (IsLoaded)
+            UpdateMeasurementControlsVisibility();
+
         var mi = await Compatibility.GetMachineInformationAsync();
         if (!IsLoaded)
             return;
-
-        if (mi.Properties.IsAmdDevice)
-            OnAmdDeviceDetected();
     }
-
-    protected abstract void OnAmdDeviceDetected();
 
     private void SubscribeEvents()
     {
@@ -137,9 +135,8 @@ public abstract class OsdWindowBase : Window
                 if (App.Current.OsdWindow == null) return;
 
                 var newItemsSet = new HashSet<OsdItem>(message.Items);
-                if (_activeItems.SetEquals(newItemsSet)) return;
-
                 _activeItems = newItemsSet;
+                UpdateSystemFans(_controller.SystemFans);
                 UpdateMeasurementControlsVisibility();
                 if (IsVisible && _applicationSettings.Store.EnableHardwareSensors)
                     StartHardwareSensorUpdates();
@@ -240,6 +237,7 @@ public abstract class OsdWindowBase : Window
     {
         await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
 
+        UpdateMeasurementControlsVisibility();
         UpdateLayout();
         SetWindowPosition();
     }
@@ -255,9 +253,7 @@ public abstract class OsdWindowBase : Window
         if (!_positionSet)
             return;
 
-        var workArea = CurrentWorkArea;
-
-        Left = workArea.Left + (workArea.Width - ActualWidth) / 2;
+        SetDefaultWindowPosition();
     }
 
     public virtual void SetWindowPosition()
@@ -381,11 +377,6 @@ public abstract class OsdWindowBase : Window
 
             if (IsVisible)
             {
-                _sensorsGroupControllers.ShowAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
-                _sensorsGroupControllers.CpuTemperatureSource = _hardwareSensorSettings.Store.CpuTemperatureSource;
-                _sensorsGroupControllers.CpuVoltageMode = _hardwareSensorSettings.Store.CpuVoltageMode;
-                _sensorsGroupControllers.CpuVoltageCoreIndex = _hardwareSensorSettings.Store.CpuVoltageCoreIndex;
-
                 _cts = new CancellationTokenSource();
 
                 CheckAndUpdateFpsMonitoring();
@@ -522,13 +513,19 @@ public abstract class OsdWindowBase : Window
 
     #region Visibility
 
+    private bool IsMeasurementAvailable(OsdItem item) => item switch
+    {
+        OsdItem.SystemFans => _controller.SystemFans.Any(fan => _OsdSettings.Store.VisibleSystemFanIds is not { } ids || ids.Contains(fan.FanId)),
+        _ => true
+    };
+
     protected void UpdateMeasurementControlsVisibility()
     {
         bool isHybrid = _sensorsGroupControllers.IsHybrid;
 
         foreach (var (item, element) in _itemsMap)
         {
-            bool shouldShow = _activeItems.Contains(item);
+            bool shouldShow = _activeItems.Contains(item) && IsMeasurementAvailable(item);
 
             if (isHybrid)
             {
@@ -550,7 +547,7 @@ public abstract class OsdWindowBase : Window
         {
             bool isGroupActive = items.Any(item =>
             {
-                if (!_activeItems.Contains(item)) return false;
+                if (!_activeItems.Contains(item) || !IsMeasurementAvailable(item)) return false;
                 if (isHybrid && item == OsdItem.CpuFrequency) return false;
                 if (!isHybrid && item is OsdItem.CpuPCoreFrequency or OsdItem.CpuECoreFrequency) return false;
                 return true;
@@ -573,6 +570,24 @@ public abstract class OsdWindowBase : Window
         CheckAndUpdateFpsMonitoring();
         this.EscalateZBand();
     }
+
+    protected void UpdateSystemFans(IReadOnlyList<FanData> fans)
+    {
+        var visibleIds = _OsdSettings.Store.VisibleSystemFanIds;
+        var visible = visibleIds is null
+            ? fans
+            : fans.Where(fan => visibleIds.Contains(fan.FanId)).ToArray();
+
+        UpdateSystemFansCore(visible);
+
+        if (VisibleSystemFanCount != visible.Count)
+        {
+            VisibleSystemFanCount = visible.Count;
+            UpdateMeasurementControlsVisibility();
+        }
+    }
+
+    protected abstract void UpdateSystemFansCore(IReadOnlyList<FanData> fans);
 
     protected virtual void OnItemVisibilityChanged(FrameworkElement element, bool visible) { }
 
@@ -837,10 +852,6 @@ public abstract class OsdWindowBase : Window
 
     private async Task RefreshSensorsDataAsync(CancellationToken token)
     {
-        _sensorsGroupControllers.CpuTemperatureSource = _hardwareSensorSettings.Store.CpuTemperatureSource;
-        _sensorsGroupControllers.CpuVoltageMode = _hardwareSensorSettings.Store.CpuVoltageMode;
-        _sensorsGroupControllers.CpuVoltageCoreIndex = _hardwareSensorSettings.Store.CpuVoltageCoreIndex;
-
         var groupSnapshot = _sensorsGroupControllers.Snapshot;
 
         SensorsData? mainData = null;
@@ -855,14 +866,15 @@ public abstract class OsdWindowBase : Window
 
         _lastUpdate = DateTime.Now;
 
+        var showAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
         var snapshot = new SensorSnapshot
         {
             CpuUsage = groupSnapshot[SensorItem.CpuUtilization],
-            CpuFrequency = _sensorsGroupControllers.ShowAverageCpuFrequency
+            CpuFrequency = showAverageCpuFrequency
                 ? groupSnapshot[SensorItem.CpuAverageFrequency] : groupSnapshot[SensorItem.CpuMaxFrequency],
-            CpuPClock = _sensorsGroupControllers.ShowAverageCpuFrequency
+            CpuPClock = showAverageCpuFrequency
                 ? groupSnapshot[SensorItem.CpuPAverageFrequency] : groupSnapshot[SensorItem.CpuPMaxFrequency],
-            CpuEClock = _sensorsGroupControllers.ShowAverageCpuFrequency
+            CpuEClock = showAverageCpuFrequency
                 ? groupSnapshot[SensorItem.CpuEAverageFrequency] : groupSnapshot[SensorItem.CpuEMaxFrequency],
             CpuTemp = groupSnapshot[SensorItem.CpuTemperature],
             CpuPower = groupSnapshot[SensorItem.CpuPower],
@@ -884,8 +896,8 @@ public abstract class OsdWindowBase : Window
             MemTotal = groupSnapshot[SensorItem.MemoryTotal],
             MemTemp = groupSnapshot[SensorItem.MemoryTemperature],
 
-            PchTemp = mainData?.PCH.Temperature ?? -1,
-            PchFanSpeed = mainData?.PCH.FanSpeed ?? -1,
+            MotherboardTemp = mainData?.MotherboardTemperature ?? -1,
+            SystemFans = mainData?.SystemFans ?? Array.Empty<FanData>(),
 
             Disk1Temp = groupSnapshot[SensorItem.Disk1Temperature],
             Disk2Temp = groupSnapshot[SensorItem.Disk2Temperature]

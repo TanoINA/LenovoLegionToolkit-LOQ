@@ -20,7 +20,7 @@ public class SensorResilienceTests
         Assert.AreEqual(1234, data.CPU.FanSpeed);
         Assert.AreEqual(65, data.GPU.Temperature);
         Assert.AreEqual(2345, data.GPU.FanSpeed);
-        Assert.AreEqual(45, data.PCH.Temperature);
+        Assert.AreEqual(45, data.MotherboardTemperature);
     }
 
     [TestMethod]
@@ -48,7 +48,7 @@ public class SensorResilienceTests
     {
         public Func<Task<int>> CpuTemperature { get; set; } = () => Task.FromResult(70);
         public Func<Task<int>> GpuTemperature { get; set; } = () => Task.FromResult(65);
-        public Func<Task<int>> PchTemperature { get; set; } = () => Task.FromResult(45);
+        public Func<Task<int>> MotherboardTemperature { get; set; } = () => Task.FromResult(45);
         public Func<Task<int>> CpuMaxFanSpeed { get; set; } = () => Task.FromResult(6000);
 
         public FakeSensorsController() : base(null!) { }
@@ -63,7 +63,7 @@ public class SensorResilienceTests
 
         protected override Task<int> GetGpuCurrentTemperatureAsync() => GpuTemperature();
 
-        protected override Task<int> GetPchCurrentTemperatureAsync() => PchTemperature();
+        protected override Task<int> GetMotherboardTemperatureAsync() => MotherboardTemperature();
 
         protected override Task<int> GetCpuCurrentFanSpeedAsync() => Task.FromResult(1234);
 

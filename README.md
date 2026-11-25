@@ -16,7 +16,7 @@ This build addresses those platform-specific behaviors while preserving 100% ups
 - **Advanced Optimus Wake Handshake**: Added an automatic dGPU pulse kick during AC startup/wake to ensure the NVIDIA Dynamic Display Mode tray icon appears reliably.
 - **Custom Mode Compatibility**: Gracefully handles unsupported `FanFullSpeed` WMI calls and fan table timeouts on LOQ motherboards, preventing custom presets from failing.
 - **Lifecycle & Memory Hardening**: Centralized control attach/detach hooks to eliminate lingering event subscriptions when switching views, decoupled static system listeners, and serialized delayed power transitions.
-- **Upstream Parity (v2.36.0.0)**: Fully synced with upstream v2.36.0.0, including Manual game detection, updated Vantage/Legion Space disablers, and Crowdin localizations.
+- **Upstream Parity (v2.38.0.0)**: Synced with upstream v2.38.0.0, including multi-fan motherboard sensor support, missing-battery handling, updated Vantage/Legion Space disablers, and Crowdin localizations.
 - **Standalone NSIS Installer**: Packaged into a clean setup installer with automatic elevation and shortcut management.
 
 ## Upstream Project

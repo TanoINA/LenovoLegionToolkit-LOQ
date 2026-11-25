@@ -142,11 +142,11 @@
     <value>Nicht unterstützt.</value>
   </data>
   <data name="AutoColorManagementState_Off" xml:space="preserve">
-    <value>Off</value>
+    <value>Aus</value>
     <comment>Informs the user that Auto Color Management is or will be turned off.</comment>
   </data>
   <data name="AutoColorManagementState_On" xml:space="preserve">
-    <value>On</value>
+    <value>An</value>
     <comment>Informs the user that Auto Color Management is or will be turned on.</comment>
   </data>
   <data name="Automation_Warning_Startup" xml:space="preserve">
@@ -219,47 +219,44 @@
   <data name="GB" xml:space="preserve">
     <value>SF</value>
   </data>
-  <data name="GodModeController_FanSetTableError_Message" xml:space="preserve">
-    <value>Überprüfung der Lüfter-Tabelle.</value>
-  </data>
   <data name="GPUController_GC6_Blocker_Acpi" xml:space="preserve">
     <value>ACPI</value>
   </data>
   <data name="GPUController_GC6_Blocker_Audio" xml:space="preserve">
-    <value>Audio active</value>
+    <value>Audio Aktiv</value>
   </data>
   <data name="GPUController_GC6_Blocker_BusScan" xml:space="preserve">
-    <value>Bus scan</value>
+    <value>Bus Scan</value>
   </data>
   <data name="GPUController_GC6_Blocker_CpuSharedSurface" xml:space="preserve">
-    <value>CPU shared memory</value>
+    <value>Gemeinsamer CPU-Speicher</value>
   </data>
   <data name="GPUController_GC6_Blocker_Display" xml:space="preserve">
-    <value>Display active</value>
+    <value>Display Aktiv</value>
   </data>
   <data name="GPUController_GC6_Blocker_DriverHold" xml:space="preserve">
-    <value>Driver hold</value>
+    <value>Treiber Blockiert</value>
   </data>
   <data name="GPUController_GC6_Blocker_HybridGraphics" xml:space="preserve">
-    <value>Hybrid graphics</value>
+    <value>Hybridgrafik</value>
   </data>
   <data name="GPUController_GC6_Blocker_PowerEvent" xml:space="preserve">
-    <value>Power event</value>
+    <value>Energieereignis</value>
   </data>
   <data name="GPUController_GC6_Blocker_ResourceLock" xml:space="preserve">
-    <value>Resource lock</value>
+    <value>Ressourcensperre</value>
   </data>
   <data name="GPUController_GC6_Blocker_SoftwareDisabled" xml:space="preserve">
-    <value>Software disabled</value>
+    <value>Software deaktiviert</value>
   </data>
   <data name="GPUController_GC6_NoSbiosSupport" xml:space="preserve">
-    <value>SBIOS does not support GC6 sleep</value>
+    <value>SBIOS unterstützt keinen GC6 Ruhezustand</value>
   </data>
   <data name="GPUController_GC6_NoVbiosSupport" xml:space="preserve">
-    <value>VBIOS does not support GC6 sleep</value>
+    <value>VBIOS unterstützt keinen GC6 Ruhezustand</value>
   </data>
   <data name="GPUController_GC6_SleepBlocked" xml:space="preserve">
-    <value>Sleep blocked ({0})</value>
+    <value>Ruhezustand blockiert ({0})</value>
   </data>
   <data name="GPUController_PoweredOff" xml:space="preserve">
     <value>Ausgeschaltet</value>
@@ -480,7 +477,7 @@
     <value>Ruhig</value>
   </data>
   <data name="RefreshRate_Dynamic" xml:space="preserve">
-    <value>Dynamic ({0} Hz)</value>
+    <value>Dynamic ({0} Hz or {1} Hz)</value>
   </data>
   <data name="RGBKeyboardBacklightBrightness_High" xml:space="preserve">
     <value>Hoch</value>
@@ -533,6 +530,15 @@
   <data name="SharedMemory" xml:space="preserve">
     <value>Geteilt / dynamisch</value>
   </data>
+  <data name="SoftwareDisabler_ProcessesStillRunning_Message" xml:space="preserve">
+    <value>Laufende Prozesse: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesRequiringRestart_Message" xml:space="preserve">
+    <value>Dienste, die einen Neustart benötigen: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesStillRunning_Message" xml:space="preserve">
+    <value>Noch laufende Dienste: {0}.</value>
+  </data>
   <data name="SpeakerState_Mute" xml:space="preserve">
     <value>Stummschaltung</value>
   </data>
@@ -581,6 +587,9 @@
   <data name="SpectrumKeyboardBacklightEffectType_AuroraSync" xml:space="preserve">
     <value>Aurora Sync</value>
   </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Breath" xml:space="preserve">
+    <value>Atmend</value>
+  </data>
   <data name="SpectrumKeyboardBacklightEffectType_ColorChange" xml:space="preserve">
     <value>Farbwechsel</value>
   </data>
@@ -590,23 +599,29 @@
   <data name="SpectrumKeyboardBacklightEffectType_ColorWave" xml:space="preserve">
     <value>Farbwelle</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Rain" xml:space="preserve">
-    <value>Regen</value>
+  <data name="SpectrumKeyboardBacklightEffectType_HorseRaceLamp" xml:space="preserve">
+    <value>Pferderennen-Lampe</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_RainbowScrew" xml:space="preserve">
-    <value>Regenbogen-Schraube</value>
+  <data name="SpectrumKeyboardBacklightEffectType_Lighting" xml:space="preserve">
+    <value>Tippen</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_RainbowWave" xml:space="preserve">
     <value>Regenbogenwelle</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Ripple" xml:space="preserve">
+  <data name="SpectrumKeyboardBacklightEffectType_Raining" xml:space="preserve">
+    <value>Regen</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Ripples" xml:space="preserve">
     <value>Kräuseln</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_Smooth" xml:space="preserve">
     <value>Sanft</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Type" xml:space="preserve">
-    <value>Tippen</value>
+  <data name="SpectrumKeyboardBacklightEffectType_SpiralRainbow" xml:space="preserve">
+    <value>Regenbogen-Schraube</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Wave" xml:space="preserve">
+    <value>Welle</value>
   </data>
   <data name="SpectrumKeyboardBacklightSpeed_Speed1" xml:space="preserve">
     <value>Langsam</value>
@@ -618,10 +633,10 @@
     <value>Schnell</value>
   </data>
   <data name="Spectrum_Color_Mode_Customize" xml:space="preserve">
-    <value>Customize</value>
+    <value>Anpassen</value>
   </data>
   <data name="Spectrum_Color_Mode_Random_Color" xml:space="preserve">
-    <value>Random Color</value>
+    <value>Zufällige Farbe</value>
   </data>
   <data name="Theme_Dark" xml:space="preserve">
     <value>Dunkel</value>
@@ -661,6 +676,9 @@
   <data name="UpdateChannel_Test" xml:space="preserve">
     <value>Testen</value>
   </data>
+  <data name="UpdateChecker_Security_Authenticode" xml:space="preserve">
+    <value>Das heruntergeladene Update hat die Authenticode Signaturprüfung nicht bestanden ({0})</value>
+  </data>
   <data name="UpdateChecker_Security_Invalid" xml:space="preserve">
     <value>Das heruntergeladene Update wurde nicht vom vertrauenswürdigen Server-Zertifikat {0} signiert</value>
   </data>
@@ -693,6 +711,9 @@
   </data>
   <data name="UpdateMethod_Server" xml:space="preserve">
     <value>Server</value>
+  </data>
+  <data name="WhiteKeyboardBacklightState_Auto" xml:space="preserve">
+    <value>Auto</value>
   </data>
   <data name="WhiteKeyboardBacklightState_High" xml:space="preserve">
     <value>Hoch</value>

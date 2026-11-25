@@ -25,6 +25,7 @@ using LenovoLegionToolkit.Lib.Messaging.Messages;
 using LenovoLegionToolkit.Lib.Settings;
 using LenovoLegionToolkit.Lib.SoftwareDisabler;
 using LenovoLegionToolkit.Lib.Station.Services;
+using LenovoLegionToolkit.Lib.System;
 using LenovoLegionToolkit.Lib.Utils;
 using LenovoLegionToolkit.WPF.Controls.Custom;
 using LenovoLegionToolkit.WPF.Extensions;
@@ -43,6 +44,8 @@ public partial class MainWindow
     private readonly ApplicationSettings _applicationSettings = IoCContainer.Resolve<ApplicationSettings>();
     private readonly SpecialKeyListener _specialKeyListener = IoCContainer.Resolve<SpecialKeyListener>();
     private readonly DriverKeyListener _driverKeyListener = IoCContainer.Resolve<DriverKeyListener>();
+    private readonly ConsumerControlKeyListener _consumerControlKeyListener = IoCContainer.Resolve<ConsumerControlKeyListener>();
+    private readonly KeyboardHookListener _keyboardHookListener = IoCContainer.Resolve<KeyboardHookListener>();
     private readonly VantageDisabler _vantageDisabler = IoCContainer.Resolve<VantageDisabler>();
     private readonly LegionSpaceDisabler _legionSpaceDisabler = IoCContainer.Resolve<LegionSpaceDisabler>();
     private readonly LegionZoneDisabler _legionZoneDisabler = IoCContainer.Resolve<LegionZoneDisabler>();
@@ -112,28 +115,13 @@ public partial class MainWindow
     {
         _contentGrid.Visibility = Visibility.Hidden;
 
-        if (!AppFlags.Instance.Debug)
-        {
-            if (!await KeyboardBacklightPage.IsSupportedAsync())
-            {
-                _navigationStore.Items.Remove(_keyboardItem);
-            }
-
-            if (!await LampArrayRGBKeyboardPage.IsSupportedAsync())
-            {
-                _navigationStore.Items.Remove(_lampArrayKeyboardItem);
-            }
-
-            var mi = await Compatibility.GetMachineInformationAsync();
-            if (!(mi.LegionSeries == LegionSeries.Legion_Pro_7 && mi.Generation >= 10))
-            {
-                _navigationStore.Items.Remove(_lampArrayKeyboardItem);
-            }
-        }
+        await AddNavigationItemsAsync();
 
         var actionManager = IoCContainer.Resolve<SpecialKeyActionManager>();
         actionManager.WireUp(_specialKeyListener, () => Dispatcher.Invoke(BringToForeground));
         actionManager.WireUp(_driverKeyListener);
+        actionManager.WireUp(_consumerControlKeyListener);
+        actionManager.WireUp(_keyboardHookListener, _consumerControlKeyListener);
 
         AddExtensionNavigationItems();
 
@@ -141,6 +129,7 @@ public partial class MainWindow
 
         LoadDeviceInfo();
         UpdateIndicators();
+        UpdateSupportIndicator();
         CheckForUpdates();
 
         InputBindings.Add(new KeyBinding(new ActionCommand(_navigationStore.NavigateToNext), Key.Tab, ModifierKeys.Control));
@@ -156,6 +145,24 @@ public partial class MainWindow
         _trayHelper = trayHelper;
 
         ApplyCompactLayout();
+
+        NavigateToFirstItemIfNeeded();
+    }
+
+    private void NavigateToFirstItemIfNeeded()
+    {
+        if (_rootFrame.Content is not null)
+        {
+            return;
+        }
+
+        var firstItem = _navigationStore.Items.OfType<CustomNavigationItem>().FirstOrDefault();
+        if (firstItem is null)
+        {
+            return;
+        }
+
+        _navigationStore.Navigate(firstItem.PageTag);
     }
 
     private void ApplyCompactLayout()
@@ -203,6 +210,7 @@ public partial class MainWindow
             _legionSpaceIndicator.Padding = new Thickness(4, 2, 4, 2);
             _fnKeysIndicator.Padding = new Thickness(4, 2, 4, 2);
             _updateIndicator.Padding = new Thickness(4, 2, 4, 2);
+            _supportIndicator.Padding = new Thickness(4, 2, 4, 2);
         }
     }
 
@@ -300,6 +308,39 @@ public partial class MainWindow
         }
     }
 
+    private async Task AddNavigationItemsAsync()
+    {
+        await _navigationStore.TryAddAsync("dashboard", typeof(DashboardPage), Resource.MainWindow_NavigationItem_Dashboard, SymbolRegular.Home24);
+        await _navigationStore.TryAddAsync("keyboardBacklight", typeof(KeyboardBacklightPage), Resource.MainWindow_NavigationItem_Keyboard, SymbolRegular.Keyboard24, IsKeyboardBacklightSupportedAsync);
+        await _navigationStore.TryAddAsync("lampArrayKeyboardBacklight", typeof(LampArrayRGBKeyboardPage), Resource.MainWindow_NavigationItem_Keyboard, SymbolRegular.Keyboard24, IsLampArrayKeyboardSupportedAsync);
+        await _navigationStore.TryAddAsync("battery", typeof(BatteryPage), Resource.MainWindow_NavigationItem_Battery, SymbolRegular.BatteryCheckmark24, IsBatterySupportedAsync);
+        await _navigationStore.TryAddAsync("automation", typeof(AutomationPage), Resource.MainWindow_NavigationItem_Actions, SymbolRegular.Flash24);
+        await _navigationStore.TryAddAsync("macro", typeof(MacroPage), Resource.MainWindow_NavigationItem_Macro, SymbolRegular.ReceiptPlay24);
+        await _navigationStore.TryAddAsync("packages", typeof(PackagesPage), Resource.MainWindow_NavigationItem_Packages, SymbolRegular.Box24);
+    }
+
+    private static async Task<bool> IsKeyboardBacklightSupportedAsync()
+        => AppFlags.Instance.Debug || await KeyboardBacklightPage.IsSupportedAsync();
+
+    private static async Task<bool> IsLampArrayKeyboardSupportedAsync()
+    {
+        if (AppFlags.Instance.Debug)
+        {
+            return true;
+        }
+
+        if (!await LampArrayRGBKeyboardPage.IsSupportedAsync())
+        {
+            return false;
+        }
+
+        var mi = await Compatibility.GetMachineInformationAsync();
+
+        return mi.Generation >= 10;
+    }
+
+    private static Task<bool> IsBatterySupportedAsync() => Task.FromResult(Battery.IsBatteryPresent);
+
     private void AddExtensionNavigationItems()
     {
         foreach (var item in _extensionNavigationService.Items.Where(i => !i.IsFooter))
@@ -380,6 +421,32 @@ public partial class MainWindow
             return;
 
         ShowUpdateWindow();
+    }
+
+    private void UpdateSupportIndicator()
+    {
+        _supportIndicator.Visibility = !_applicationSettings.Store.SupportIndicatorDismissed
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void SupportIndicator_MouseLeftButtonDown(object sender, MouseButtonEventArgs e) => OpenDonatePage();
+
+    private void SupportIndicator_KeyDown(object sender, KeyEventArgs e)
+    {
+        if (e.Key is not Key.Enter and not Key.Space)
+            return;
+
+        OpenDonatePage();
+    }
+
+    private void OpenDonatePage()
+    {
+        _applicationSettings.Store.SupportIndicatorDismissed = true;
+        _applicationSettings.SynchronizeStore();
+        UpdateSupportIndicator();
+
+        _navigationStore.Navigate("donate");
     }
 
     private async void LoadDeviceInfo()

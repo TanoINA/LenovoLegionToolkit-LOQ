@@ -219,9 +219,6 @@
   <data name="GB" xml:space="preserve">
     <value>GB</value>
   </data>
-  <data name="GodModeController_FanSetTableError_Message" xml:space="preserve">
-    <value>Verifica della tabella ventole fallita.</value>
-  </data>
   <data name="GPUController_GC6_Blocker_Acpi" xml:space="preserve">
     <value>ACPI</value>
   </data>
@@ -480,7 +477,7 @@
     <value>Silenzioso</value>
   </data>
   <data name="RefreshRate_Dynamic" xml:space="preserve">
-    <value>Dynamic ({0} Hz)</value>
+    <value>Dynamic ({0} Hz or {1} Hz)</value>
   </data>
   <data name="RGBKeyboardBacklightBrightness_High" xml:space="preserve">
     <value>Alto</value>
@@ -533,6 +530,15 @@
   <data name="SharedMemory" xml:space="preserve">
     <value>Condiviso / Dinamico</value>
   </data>
+  <data name="SoftwareDisabler_ProcessesStillRunning_Message" xml:space="preserve">
+    <value>Processes still running: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesRequiringRestart_Message" xml:space="preserve">
+    <value>Services that need a restart: {0}.</value>
+  </data>
+  <data name="SoftwareDisabler_ServicesStillRunning_Message" xml:space="preserve">
+    <value>Services still running: {0}.</value>
+  </data>
   <data name="SpeakerState_Mute" xml:space="preserve">
     <value>Silenzia</value>
   </data>
@@ -581,6 +587,9 @@
   <data name="SpectrumKeyboardBacklightEffectType_AuroraSync" xml:space="preserve">
     <value>Aurora Sync</value>
   </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Breath" xml:space="preserve">
+    <value>Breath</value>
+  </data>
   <data name="SpectrumKeyboardBacklightEffectType_ColorChange" xml:space="preserve">
     <value>Cambio Colore</value>
   </data>
@@ -590,23 +599,29 @@
   <data name="SpectrumKeyboardBacklightEffectType_ColorWave" xml:space="preserve">
     <value>Colore Onda</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Rain" xml:space="preserve">
-    <value>Pioggia</value>
+  <data name="SpectrumKeyboardBacklightEffectType_HorseRaceLamp" xml:space="preserve">
+    <value>Horse Race Lamp</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_RainbowScrew" xml:space="preserve">
-    <value>Vite Arcobaleno</value>
+  <data name="SpectrumKeyboardBacklightEffectType_Lighting" xml:space="preserve">
+    <value>Tipo</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_RainbowWave" xml:space="preserve">
     <value>Onda Arcobaleno</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Ripple" xml:space="preserve">
+  <data name="SpectrumKeyboardBacklightEffectType_Raining" xml:space="preserve">
+    <value>Pioggia</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Ripples" xml:space="preserve">
     <value>Ondulazione</value>
   </data>
   <data name="SpectrumKeyboardBacklightEffectType_Smooth" xml:space="preserve">
     <value>Morbido</value>
   </data>
-  <data name="SpectrumKeyboardBacklightEffectType_Type" xml:space="preserve">
-    <value>Tipo</value>
+  <data name="SpectrumKeyboardBacklightEffectType_SpiralRainbow" xml:space="preserve">
+    <value>Vite Arcobaleno</value>
+  </data>
+  <data name="SpectrumKeyboardBacklightEffectType_Wave" xml:space="preserve">
+    <value>Wave</value>
   </data>
   <data name="SpectrumKeyboardBacklightSpeed_Speed1" xml:space="preserve">
     <value>Lento</value>
@@ -661,6 +676,9 @@
   <data name="UpdateChannel_Test" xml:space="preserve">
     <value>Prova</value>
   </data>
+  <data name="UpdateChecker_Security_Authenticode" xml:space="preserve">
+    <value>The downloaded update failed Authenticode signature verification ({0})</value>
+  </data>
   <data name="UpdateChecker_Security_Invalid" xml:space="preserve">
     <value>L'aggiornamento scaricato non è firmato dal certificato del server fidato {0}</value>
   </data>
@@ -693,6 +711,9 @@
   </data>
   <data name="UpdateMethod_Server" xml:space="preserve">
     <value>Server</value>
+  </data>
+  <data name="WhiteKeyboardBacklightState_Auto" xml:space="preserve">
+    <value>Auto</value>
   </data>
   <data name="WhiteKeyboardBacklightState_High" xml:space="preserve">
     <value>Alto</value>

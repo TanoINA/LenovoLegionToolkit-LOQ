@@ -83,7 +83,12 @@ public partial class BatteryPage
             {
                 try
                 {
-                    var batteryInfo = Battery.GetBatteryInformation();
+                    if (!Battery.TryGetBatteryInformation(out var batteryInfo))
+                    {
+                        Log.Instance.Trace($"Battery not present, stopping refresh.");
+                        break;
+                    }
+
                     var powerAdapterStatus = await Power.IsPowerAdapterConnectedAsync();
                     var onBatterySince = Battery.GetOnBatterySince();
                     Dispatcher.Invoke(() => Set(batteryInfo, powerAdapterStatus, onBatterySince));
