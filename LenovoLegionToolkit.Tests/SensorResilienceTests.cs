@@ -44,11 +44,26 @@ public class SensorResilienceTests
         Assert.AreEqual(2, calls);
     }
 
+    [TestMethod]
+    public async Task GetFanSpeedsAsync_TransientCpuFanFailure_DoesNotThrow()
+    {
+        var controller = new FakeSensorsController
+        {
+            CpuFanSpeed = () => Task.FromException<int>(new ManagementException("Transient WMI failure"))
+        };
+
+        var speeds = await controller.GetFanSpeedsAsync();
+
+        Assert.AreEqual(-1, speeds.CpuFanSpeed);
+        Assert.AreEqual(2345, speeds.GpuFanSpeed);
+    }
+
     private sealed class FakeSensorsController : AbstractSensorsController
     {
         public Func<Task<int>> CpuTemperature { get; set; } = () => Task.FromResult(70);
         public Func<Task<int>> GpuTemperature { get; set; } = () => Task.FromResult(65);
         public Func<Task<int>> MotherboardTemperature { get; set; } = () => Task.FromResult(45);
+        public Func<Task<int>> CpuFanSpeed { get; set; } = () => Task.FromResult(1234);
         public Func<Task<int>> CpuMaxFanSpeed { get; set; } = () => Task.FromResult(6000);
 
         public FakeSensorsController() : base(null!) { }
@@ -65,7 +80,7 @@ public class SensorResilienceTests
 
         protected override Task<int> GetMotherboardTemperatureAsync() => MotherboardTemperature();
 
-        protected override Task<int> GetCpuCurrentFanSpeedAsync() => Task.FromResult(1234);
+        protected override Task<int> GetCpuCurrentFanSpeedAsync() => CpuFanSpeed();
 
         protected override Task<int> GetGpuCurrentFanSpeedAsync() => Task.FromResult(2345);
 

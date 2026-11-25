@@ -205,10 +205,13 @@ public class RefreshRateFeature(ApplicationSettings settings) : IFeature<Refresh
 
         try
         {
-            InternalDisplay.SetNeedsRefresh();
             await RetryHelper.RetryAsync(async () =>
             {
+                InternalDisplay.SetNeedsRefresh();
                 var current = await GetStateAsync().ConfigureAwait(false);
+                if (current.Frequency == 0)
+                    throw new InvalidOperationException("Internal display is not ready.");
+
                 if (current.Frequency != target.Value.Frequency || current.IsDynamic != target.Value.IsDynamic)
                 {
                     Log.Instance.Trace($"Current refresh rate ({current}) does not match target ({target.Value}). Re-applying target...");

@@ -487,7 +487,7 @@ public partial class SensorsControlV2
             UpdateValue(_cpuCoreClockBar, _cpuCoreClockLabel, -1, -1, "-");
             UpdateValue(_cpuTemperatureBar, _cpuTemperatureLabel, -1, -1, "-");
             UpdateValue(_cpuFanSpeedBar, _cpuFanSpeedLabel, -1, -1, "-");
-            UpdateValue(_cpuPowerLabel, "-");
+            UpdatePowerValue(_cpuPowerLabel, -1);
             UpdateValue(_gpuUtilizationBar, _gpuUtilizationLabel, -1, -1, "-");
             UpdateValue(_gpuVramUtilizationBar, _gpuVramUtilizationLabel, -1, -1, "-");
             UpdateValue(_gpuCoreClockBar, _gpuCoreClockLabel, -1, -1, "-");
@@ -499,7 +499,7 @@ public partial class SensorsControlV2
             Grid.SetColumn(_gpuVramTempPanel, 1);
             _gpuVramTempPanel.Margin = new Thickness(12, 0, 0, 0);
 
-            UpdateValue(_gpuPowerLabel, "-");
+            UpdatePowerValue(_gpuPowerLabel, -1);
             UpdateValue(_motherboardTemperatureBar, _motherboardTemperatureLabel, -1, -1, "-");
             ClearSystemFans();
             UpdateValue(_disk1TemperatureBar, _disk1TemperatureLabel, -1, -1, "-");
@@ -551,14 +551,14 @@ public partial class SensorsControlV2
             if (_activeSensorItems.Contains(SensorItem.CpuUtilization)) UpdateValue(_cpuUtilizationBar, _cpuUtilizationLabel, 100, cpuUsage, $"{cpuUsage:0}{Resource.Percent}");
             if (_activeSensorItems.Contains(SensorItem.CpuFrequency)) UpdateValue(_cpuCoreClockBar, _cpuCoreClockLabel, 6000, cpuClock, $"{cpuClock / 1000.0:0.0} {Resource.GHz}");
             if (_activeSensorItems.Contains(SensorItem.CpuTemperature)) UpdateValue(_cpuTemperatureBar, _cpuTemperatureLabel, 100, cpuTemp, GetTemperatureText(cpuTemp));
-            if (_activeSensorItems.Contains(SensorItem.CpuPower)) UpdateValue(_cpuPowerLabel, $"{cpuPower:0} {Resource.Watt}");
+            if (_activeSensorItems.Contains(SensorItem.CpuPower)) UpdatePowerValue(_cpuPowerLabel, cpuPower);
             if (_activeSensorItems.Contains(SensorItem.CpuFanSpeed)) UpdateValue(_cpuFanSpeedBar, _cpuFanSpeedLabel, data.CPU.MaxFanSpeed, data.CPU.FanSpeed, $"{data.CPU.FanSpeed} {Resource.RPM}", $"{data.CPU.MaxFanSpeed} {Resource.RPM}");
 
             // --- GPU ---
             if (_activeSensorItems.Contains(SensorItem.GpuUtilization)) UpdateValue(_gpuUtilizationBar, _gpuUtilizationLabel, 100, gpuUsage, $"{gpuUsage:0}{Resource.Percent}");
             if (_activeSensorItems.Contains(SensorItem.GpuVramUtilization)) UpdateValue(_gpuVramUtilizationBar, _gpuVramUtilizationLabel, 100, gpuVramUsage, GetMemoryUsageText(gpuVramUsage, gpuVramUsed, gpuVramTotal));
             if (_activeSensorItems.Contains(SensorItem.GpuFrequency)) UpdateValue(_gpuCoreClockBar, _gpuCoreClockLabel, 3000, gpuClock, $"{gpuClock:0} {Resource.MHz}");
-            if (_activeSensorItems.Contains(SensorItem.GpuPower)) UpdateValue(_gpuPowerLabel, $"{gpuPower:0} {Resource.Watt}");
+            if (_activeSensorItems.Contains(SensorItem.GpuPower)) UpdatePowerValue(_gpuPowerLabel, gpuPower);
 
             if (_activeSensorItems.Contains(SensorItem.GpuTemperatures))
             {
@@ -721,22 +721,6 @@ public partial class SensorsControlV2
         }
     }
 
-    private static void UpdateValue(TextBlock label, double max, double value, string text, string? toolTipText = null)
-    {
-        if (max <= 0 || value < 0)
-        {
-            label.Text = "-";
-            label.ToolTip = null;
-            label.Tag = 0;
-        }
-        else
-        {
-            label.Text = text;
-            label.ToolTip = toolTipText is null ? null : string.Format(Resource.SensorsControl_Maximum, toolTipText);
-            label.Tag = value;
-        }
-    }
-
     private static void UpdateBatteryStatus(TextBlock label, BatteryInformation? batteryInfo)
     {
         if (batteryInfo is null)
@@ -753,17 +737,11 @@ public partial class SensorsControlV2
         }
     }
 
-    private static void UpdateValue(TextBlock label, string str)
+    private static void UpdatePowerValue(TextBlock label, double power)
     {
-        var processedStr = str.Replace("W", "");
-        if (int.TryParse(processedStr, out var result))
-        {
-            label.Text = result <= 0 ? "-" : str;
-        }
-        else
-        {
-            label.Text = str;
-        }
+        label.Text = double.IsNaN(power) || double.IsInfinity(power) || power <= 0
+            ? "-"
+            : $"{power:0} {Resource.Watt}";
     }
 
     private void UpdateTemperatureValue(TextBlock label, double temperature)

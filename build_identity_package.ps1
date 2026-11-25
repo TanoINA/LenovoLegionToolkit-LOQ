@@ -90,6 +90,7 @@ function New-IdentityPri {
     Write-Host "Generating resources.pri..."
     $configPath = Join-Path $StagingDir "priconfig.xml"
     & $MakePriPath createconfig /cf $configPath /dq en-US /pv 10.0.0 /o | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "makepri createconfig failed (exit code $LASTEXITCODE)." }
     
     [xml]$priConfig = Get-Content $configPath
     $packagingNode = $priConfig.SelectSingleNode("//packaging")
@@ -99,6 +100,7 @@ function New-IdentityPri {
     }
 
     & $MakePriPath new /pr $StagingDir /cf $configPath /of (Join-Path $OutputDir "resources.pri") /o /v | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "makepri new failed (exit code $LASTEXITCODE)." }
     Remove-Item $configPath -ErrorAction SilentlyContinue
 }
 
@@ -224,7 +226,7 @@ if ($UseManifest -or -not $makeAppx -or -not $signTool) {
     Write-Host "Prepared fallback identity registration files in: $resolvedOutputDir"
 
     $exePath = Join-Path $resolvedOutputDir "Lenovo Legion Toolkit.exe"
-    if ((Test-Path $PfxPath) -and -not [string]::IsNullOrWhiteSpace($Password) -and (Test-Path $exePath)) {
+    if ($signTool -and (Test-Path $PfxPath) -and -not [string]::IsNullOrWhiteSpace($Password) -and (Test-Path $exePath)) {
         Write-Host "Signing executable for UIAccess (RAW manifest path)..."
         & $signTool sign /fd SHA256 /f $PfxPath /p $Password $exePath
         if ($LASTEXITCODE -ne 0) {

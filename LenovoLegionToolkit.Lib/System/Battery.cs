@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Eventing.Reader;
 using System.Linq;
+using System.Threading;
 using Windows.Win32;
 using Windows.Win32.System.Power;
 using LenovoLegionToolkit.Lib.Extensions;
@@ -15,6 +16,7 @@ namespace LenovoLegionToolkit.Lib.System;
 public static class Battery
 {
     private static readonly ApplicationSettings Settings = IoCContainer.Resolve<ApplicationSettings>();
+    private static readonly Lock DischargeRateLock = new();
     private static int MinDischargeRate { get; set; } = int.MaxValue;
     private static int MaxDischargeRate { get; set; }
 
@@ -54,7 +56,7 @@ public static class Battery
             return false;
         }
 
-        UpdateMinMaxDischargeRate(status);
+        var (minRate, maxRate) = UpdateMinMaxDischargeRate(status);
 
         var powerStatus = GetSystemPowerStatus();
 
@@ -82,8 +84,8 @@ public static class Battery
             (int)powerStatus.BatteryLifeTime,
             (int)powerStatus.BatteryFullLifeTime,
             status.Rate,
-            (status.Rate == 0 || status.Rate == int.MinValue) ? 0 : MinDischargeRate,
-            MaxDischargeRate,
+            (status.Rate == 0 || status.Rate == int.MinValue) ? 0 : minRate,
+            maxRate,
             (int)status.Capacity,
             (int)batteryInfo.DesignedCapacity,
             (int)batteryInfo.FullChargedCapacity,
@@ -131,7 +133,7 @@ public static class Battery
         {
             var resetOnReboot = Settings.Store.ResetBatteryOnSinceTimerOnReboot;
 
-            var lastRebootTime = DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount);
+            var lastRebootTime = DateTime.Now - TimeSpan.FromMilliseconds(Environment.TickCount64);
 
             var logs = new List<(DateTime Date, bool IsACOnline)>();
 
@@ -164,7 +166,7 @@ public static class Battery
                 .TakeWhile(log => log.IsACOnline != true)
                 .LastOrDefault();
 
-            return dateTime;
+            return dateTime == default ? null : dateTime;
         }
         catch (Exception ex)
         {
@@ -174,32 +176,37 @@ public static class Battery
         return null;
     }
 
-    private static void UpdateMinMaxDischargeRate(BATTERY_STATUS status)
+    private static (int Min, int Max) UpdateMinMaxDischargeRate(BATTERY_STATUS status)
     {
-        if (status.Rate == int.MinValue)
+        lock (DischargeRateLock)
         {
-            return;
-        }
-
-        if (status.Rate == 0
-            || (status.Rate > 0 && (MinDischargeRate < 0 || MaxDischargeRate < 0))
-            || (status.Rate < 0 && (MinDischargeRate > 0 || MaxDischargeRate > 0)))
-        {
-            MinDischargeRate = int.MaxValue;
-            MaxDischargeRate = 0;
-        }
-
-        if (status.Rate != 0)
-        {
-            if (MaxDischargeRate == 0 || Math.Abs(status.Rate) < Math.Abs(MinDischargeRate))
+            if (status.Rate == int.MinValue)
             {
-                MinDischargeRate = status.Rate;
+                return (MinDischargeRate == int.MaxValue ? 0 : MinDischargeRate, MaxDischargeRate);
             }
 
-            if (Math.Abs(status.Rate) > Math.Abs(MaxDischargeRate))
+            if (status.Rate == 0
+                || (status.Rate > 0 && (MinDischargeRate < 0 || MaxDischargeRate < 0))
+                || (status.Rate < 0 && (MinDischargeRate > 0 || MaxDischargeRate > 0)))
             {
-                MaxDischargeRate = status.Rate;
+                MinDischargeRate = int.MaxValue;
+                MaxDischargeRate = 0;
             }
+
+            if (status.Rate != 0)
+            {
+                if (MaxDischargeRate == 0 || Math.Abs(status.Rate) < Math.Abs(MinDischargeRate))
+                {
+                    MinDischargeRate = status.Rate;
+                }
+
+                if (Math.Abs(status.Rate) > Math.Abs(MaxDischargeRate))
+                {
+                    MaxDischargeRate = status.Rate;
+                }
+            }
+
+            return (MinDischargeRate == int.MaxValue ? 0 : MinDischargeRate, MaxDischargeRate);
         }
     }
 
@@ -215,23 +222,26 @@ public static class Battery
 
     private static bool TryGetBatteryHandleAndTag([NotNullWhen(true)] out SafeFileHandle? handle, out uint batteryTag)
     {
-        handle = null;
-        batteryTag = 0;
-
-        if (!Devices.TryGetBattery(out handle) || handle is null)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            return false;
+            handle = null;
+            batteryTag = 0;
+
+            if (!Devices.TryGetBattery(out handle) || handle is null)
+            {
+                return false;
+            }
+
+            if (TryGetBatteryTag(handle, out batteryTag))
+            {
+                return true;
+            }
+
+            Devices.InvalidateBattery(handle);
         }
 
-        if (TryGetBatteryTag(handle, out batteryTag))
-        {
-            return true;
-        }
-
-        Devices.InvalidateBattery();
         handle = null;
         batteryTag = 0;
-
         return false;
     }
 

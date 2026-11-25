@@ -117,11 +117,15 @@ public partial class DiscreteGPUControl
             if (e.ProcessCount > 0)
             {
                 processesStringBuilder.Append(Resource.DiscreteGPUControl_Processes);
-                foreach (var p in e.Processes.OrderBy(p => p.ProcessName))
+                var names = new System.Collections.Generic.List<string>(e.ProcessCount);
+                foreach (var p in e.Processes)
                 {
-                    try { processesStringBuilder.AppendLine().Append(" · ").Append(p.ProcessName); }
-                    catch {  /* Ignore */ }
+                    try { names.Add(p.ProcessName); }
+                    catch { /* Process may have exited between poll and UI refresh. */ }
                 }
+                names.Sort(StringComparer.OrdinalIgnoreCase);
+                foreach (var name in names)
+                    processesStringBuilder.AppendLine().Append(" · ").Append(name);
             }
             else
             {
@@ -192,14 +196,28 @@ public partial class DiscreteGPUControl
 
     private async void KillAppsMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        _deactivateGPUButton.IsEnabled = false;
-        await _gpuController.KillGPUProcessesAsync();
+        try
+        {
+            _deactivateGPUButton.IsEnabled = false;
+            await _gpuController.KillGPUProcessesAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to kill GPU processes.", ex);
+        }
     }
 
     private async void RestartGPUMenuItem_Click(object sender, RoutedEventArgs e)
     {
-        _deactivateGPUButton.IsEnabled = false;
-        await _gpuController.RestartGPUAsync();
+        try
+        {
+            _deactivateGPUButton.IsEnabled = false;
+            await _gpuController.RestartGPUAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to restart GPU.", ex);
+        }
     }
 
     private void GpuInfoButton_Click(object sender, RoutedEventArgs e)

@@ -67,7 +67,7 @@ public class IpcServer(
         if (_cancellationTokenSource is null)
             return;
         await _cancellationTokenSource.CancelAsync().ConfigureAwait(false);
-        await _handler.ConfigureAwait(false);
+        await Task.WhenAny(_handler, Task.Delay(TimeSpan.FromSeconds(3))).ConfigureAwait(false);
         _cancellationTokenSource.Dispose();
         _cancellationTokenSource = null;
         _handler = Task.CompletedTask;
@@ -85,18 +85,18 @@ public class IpcServer(
 
             while (!token.IsCancellationRequested)
             {
-                await using var pipe = NamedPipeServerStreamAcl.Create(LenovoLegionToolkit.CLI.Lib.Constants.PIPE_NAME,
-                    PipeDirection.InOut,
-                    1,
-                    PipeTransmissionMode.Message,
-                    PipeOptions.Asynchronous,
-                    0,
-                    0,
-                    security);
-
-                using var closeOnStop = token.Register(() => pipe.Dispose());
                 try
                 {
+                    await using var pipe = NamedPipeServerStreamAcl.Create(LenovoLegionToolkit.CLI.Lib.Constants.PIPE_NAME,
+                        PipeDirection.InOut,
+                        1,
+                        PipeTransmissionMode.Message,
+                        PipeOptions.Asynchronous,
+                        0,
+                        0,
+                        security);
+
+                    using var closeOnStop = token.Register(() => pipe.Dispose());
                     await pipe.WaitForConnectionAsync(token).ConfigureAwait(false);
                     using var deadline = CancellationTokenSource.CreateLinkedTokenSource(token);
                     deadline.CancelAfter(TransportTimeout);
@@ -129,6 +129,8 @@ public class IpcServer(
                 {
                     // Never attempt a second write on a failed transport.
                     Log.Instance.Trace($"IPC connection failed or timed out.", ex);
+                    try { await Task.Delay(250, token).ConfigureAwait(false); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }

@@ -24,13 +24,14 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
     private ID3D11Device? _d3dDevice;
     private ID3D11DeviceContext? _d3dContext;
-    private bool _isDisposed;
+    private int _disposed;
+    private bool _isDisposed => Volatile.Read(ref _disposed) != 0;
     private bool _isActive;
     private int _isPulsing;
     private CancellationTokenSource? _pulseCts;
     private Task? _initializationTask;
     private Task? _pulseTask;
-    private DateTime _lastAdapterChangeHandled = DateTime.MinValue;
+    private long _adapterEventVersion;
     private static readonly TimeSpan AdapterChangeDebounce = TimeSpan.FromMilliseconds(500);
 
     public void CancelPulse()
@@ -84,14 +85,14 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
             }
             else if (e.PowerAdapterStateChanged)
             {
-                // Debounce transient ACLineStatus spikes (e.g. 255) that fire rapid AC change events.
-                var now = DateTime.UtcNow;
-                if (now - _lastAdapterChangeHandled < AdapterChangeDebounce)
+                // Trailing-edge debounce so rapid AC spikes settle while the latest state is never dropped.
+                var version = Interlocked.Increment(ref _adapterEventVersion);
+                await Task.Delay(AdapterChangeDebounce).ConfigureAwait(false);
+                if (_isDisposed || version != Volatile.Read(ref _adapterEventVersion))
                 {
-                    Log.Instance.Trace($"Power adapter state change debounced (transient spike suppressed).");
+                    Log.Instance.Trace($"Power adapter state change superseded by newer event.");
                     return;
                 }
-                _lastAdapterChangeHandled = now;
 
                 Log.Instance.Trace($"Power adapter state changed: updating dGPU awake manager.");
                 var acStatus = await Power.IsPowerAdapterConnectedAsync().ConfigureAwait(false);
@@ -156,6 +157,14 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         var cts = new CancellationTokenSource();
         _pulseCts = cts;
 
+        if (_isDisposed)
+        {
+            _pulseCts = null;
+            cts.Dispose();
+            Interlocked.Exchange(ref _isPulsing, 0);
+            return;
+        }
+
         try
         {
             var pulseTask = Task.Run(async () =>
@@ -174,15 +183,8 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
                         return;
                     }
 
-                    IDXGIAdapter1? dgpuAdapter = null;
-                    try
-                    {
-                        factory.EnumAdapterByGpuPreference(0, DXGI_GPU_PREFERENCE.DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, typeof(IDXGIAdapter1).GUID, out object adapterObj);
-                        dgpuAdapter = (IDXGIAdapter1)adapterObj;
-                    }
-                    catch { }
-
-                    if (dgpuAdapter == null)
+                    IDXGIAdapter1? dgpuAdapter = FindNvidiaAdapter(factory);
+                    if (dgpuAdapter is null)
                     {
                         Marshal.ReleaseComObject(factory);
                         return;
@@ -322,6 +324,20 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
         }
     }
 
+    private static IDXGIAdapter1? FindNvidiaAdapter(IDXGIFactory6 factory)
+    {
+        for (uint i = 0; ; i++)
+        {
+            if (factory.EnumAdapters1(i, out var adapter).Failed)
+                return null;
+
+            if (adapter.GetDesc1().VendorId == NVIDIA_VENDOR_ID)
+                return adapter;
+
+            Marshal.ReleaseComObject(adapter);
+        }
+    }
+
     private unsafe void CreateD3D11Device()
     {
         PInvoke.CreateDXGIFactory2(0, typeof(IDXGIFactory6).GUID, out object factoryObj);
@@ -331,21 +347,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
             throw new Exception("Failed to create IDXGIFactory6.");
         }
 
-        IDXGIAdapter1? dgpuAdapter = null;
-        for (uint i = 0; ; i++)
-        {
-            if (factory.EnumAdapters1(i, out var adapter).Failed)
-                break;
-
-            if (adapter.GetDesc1().VendorId == NVIDIA_VENDOR_ID)
-            {
-                dgpuAdapter = adapter;
-                break;
-            }
-
-            Marshal.ReleaseComObject(adapter);
-        }
-
+        IDXGIAdapter1? dgpuAdapter = FindNvidiaAdapter(factory);
         if (dgpuAdapter is null)
         {
             Marshal.ReleaseComObject(factory);
@@ -393,8 +395,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
     public async ValueTask DisposeAsync()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         CancelPulse();
         _powerStateListener.Changed -= PowerStateListener_Changed;
@@ -408,8 +409,7 @@ public sealed class DgpuAwakeManager : IAsyncDisposable, IDisposable
 
     public void Dispose()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
 
         CancelPulse();
         _powerStateListener.Changed -= PowerStateListener_Changed;

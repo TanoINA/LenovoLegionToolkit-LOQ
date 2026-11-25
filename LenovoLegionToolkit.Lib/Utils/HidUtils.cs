@@ -14,9 +14,15 @@ public static class HidUtils
     {
         lock (IoLock)
         {
+            if (handle.IsClosed || handle.IsInvalid)
+                return false;
+
             var ptr = IntPtr.Zero;
+            var handleAdded = false;
             try
             {
+                handle.DangerousAddRef(ref handleAdded);
+
                 int size;
                 if (data is byte[] bytes)
                 {
@@ -33,8 +39,14 @@ public static class HidUtils
 
                 return PInvoke.HidD_SetFeature(new HANDLE(handle.DangerousGetHandle()), ptr.ToPointer(), (uint)size);
             }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
             finally
             {
+                if (handleAdded)
+                    handle.DangerousRelease();
                 Marshal.FreeHGlobal(ptr);
             }
         }
@@ -45,9 +57,15 @@ public static class HidUtils
         lock (IoLock)
         {
             result = default;
+            if (handle.IsClosed || handle.IsInvalid)
+                return false;
+
             var ptr = IntPtr.Zero;
+            var handleAdded = false;
             try
             {
+                handle.DangerousAddRef(ref handleAdded);
+
                 var size = Marshal.SizeOf<T>();
                 ptr = Marshal.AllocHGlobal(size);
                 Marshal.Copy(new byte[] { 7 }, 0, ptr, 1);
@@ -58,8 +76,15 @@ public static class HidUtils
                 result = Marshal.PtrToStructure<T>(ptr);
                 return true;
             }
+            catch (ObjectDisposedException)
+            {
+                result = default;
+                return false;
+            }
             finally
             {
+                if (handleAdded)
+                    handle.DangerousRelease();
                 Marshal.FreeHGlobal(ptr);
             }
         }
@@ -70,9 +95,15 @@ public static class HidUtils
         lock (IoLock)
         {
             bytes = [];
+            if (handle.IsClosed || handle.IsInvalid)
+                return false;
+
             var ptr = IntPtr.Zero;
+            var handleAdded = false;
             try
             {
+                handle.DangerousAddRef(ref handleAdded);
+
                 ptr = Marshal.AllocHGlobal(size);
                 Marshal.Copy(new byte[] { 7 }, 0, ptr, 1);
 
@@ -83,8 +114,15 @@ public static class HidUtils
                 Marshal.Copy(ptr, bytes, 0, size);
                 return true;
             }
+            catch (ObjectDisposedException)
+            {
+                bytes = [];
+                return false;
+            }
             finally
             {
+                if (handleAdded)
+                    handle.DangerousRelease();
                 Marshal.FreeHGlobal(ptr);
             }
         }

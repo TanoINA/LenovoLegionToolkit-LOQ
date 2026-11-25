@@ -824,7 +824,9 @@ public class GodModeController(
             return;
         }
 
-        if (config.Capabilities.Any(IsNvApiCapability) || GetNativePowerTarget(config) is not null)
+        if ((config.Capabilities.Any(IsNvApiCapability) || GetNativePowerTarget(config) is not null) &&
+            !IoCContainer.Resolve<Features.Hybrid.HybridModeFeature>().ShouldKeepDGPUAsleep() &&
+            IsPcfAvailable())
         {
             try
             {
@@ -1487,10 +1489,11 @@ public class GodModeController(
 
     private async Task<GodModePlatformConfiguration> GetConfigAsync()
     {
-        if (_config is null)
+        var config = _config;
+        if (config is null)
         {
             var mi = await GetMachineInformationAsync().ConfigureAwait(false);
-            _config = mi.Properties.GodModePlatform switch
+            config = mi.Properties.GodModePlatform switch
             {
                 GodModePlatform.LegacyLegion => GodModePlatformConfiguration.LegacyLegion,
                 GodModePlatform.Legion => GodModePlatformConfiguration.Legion,
@@ -1498,14 +1501,14 @@ public class GodModeController(
                 _ => throw new InvalidOperationException("Unsupported GodMode platform"),
             };
 
-            if (await HasNativePowerTargetAsync(_config).ConfigureAwait(false))
+            if (await HasNativePowerTargetAsync(config).ConfigureAwait(false))
             {
                 Log.Instance.Trace($"Native power target capability is available, removing the NVAPI one...");
-                _config = _config with { Capabilities = _config.Capabilities.Where(c => !IsNvApiCapability(c)).ToList() };
+                config = config with { Capabilities = config.Capabilities.Where(c => !IsNvApiCapability(c)).ToList() };
             }
-        }
 
-        var config = _config;
+            _config = config;
+        }
         var useNvApiCapabilities = !config.Capabilities.Any(IsNvApiCapability) || NVAPI.IsAvailable();
 
         if (useNvApiCapabilities)

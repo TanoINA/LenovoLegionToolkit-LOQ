@@ -720,6 +720,8 @@ public partial class ITSModeFeature : IFeature<ITSMode>
 
     private void ScheduleOverlaySync()
     {
+        Interlocked.Exchange(ref _pendingOverlaySync, 0);
+
         var old = _overlayTimeoutCts;
         _overlayTimeoutCts = null;
         

@@ -151,8 +151,9 @@ public class UpdateChecker
                     {
                         var entry = ProjectEntries.Values
                             .FirstOrDefault(entry => entry.ProjectName == $"LenovoLegionToolkit{GetChannelSuffix(_updateSettings.Store.UpdateChannel)}");
-                        var versionString = entry.ProjectVersion ?? "0.0.0.0";
-                        return Version.TryParse(versionString, out var parsedVersion) ? parsedVersion : null;
+                        return !string.IsNullOrEmpty(entry.ProjectVersion) && Version.TryParse(entry.ProjectVersion, out var parsedVersion)
+                            ? parsedVersion
+                            : null;
                     }
 
                     Log.Instance.Trace($"Checking Server for updates...");
@@ -561,14 +562,25 @@ public class UpdateChecker
         {
             Log.Instance.Trace($"Server is under maintenance mode, channel: {channel}");
             Status = UpdateCheckStatus.Success;
-            return (null, null, StatusCode.Null, new ProjectInfo(), string.Empty);
+            return (null, null, StatusCode.NoUpdate, new ProjectInfo(), string.Empty);
         }
 
-        // Override download URL from API response if available
+        // Override download URL from API response if available (restrict to same origin)
         var projectKey = $"LenovoLegionToolkit{GetChannelSuffix(channel)}";
         if (ProjectEntries.TryGetValue(projectKey, out var pe) && !string.IsNullOrEmpty(pe.DownloadUrl))
         {
-            projectInfo.ProjectNewExePath = new Uri(new Uri(GetServerUrl()), pe.DownloadUrl).ToString();
+            var serverUri = new Uri(GetServerUrl());
+            if (Uri.TryCreate(serverUri, pe.DownloadUrl, out var candidateUri) &&
+                candidateUri.Scheme is "http" or "https" &&
+                string.Equals(candidateUri.Host, serverUri.Host, StringComparison.OrdinalIgnoreCase) &&
+                candidateUri.Port == serverUri.Port)
+            {
+                projectInfo.ProjectNewExePath = candidateUri.ToString();
+            }
+            else
+            {
+                Log.Instance.Trace($"Rejected untrusted update download URL: {pe.DownloadUrl}");
+            }
         }
 
         projectInfo.ProjectNewVersion = newestVersion;

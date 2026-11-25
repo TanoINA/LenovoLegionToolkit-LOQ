@@ -1,44 +1,42 @@
 # Lenovo Legion Toolkit (LOQ Edition)
 
-A custom build of [Lenovo Legion Toolkit](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) tailored for Lenovo LOQ series laptops (tested primarily on the LOQ 15IRX10 with i5-13450HX and RTX 5050 Laptop GPU).
+This is my personal fork of [Lenovo Legion Toolkit](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit), adjusted for Lenovo LOQ laptops. I test it mainly on a LOQ 15IRX10 (i5-13450HX, RTX 5050 Laptop GPU, 144Hz), and I keep it synced with upstream releases from [LenovoLegionToolkit-Team](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit).
 
-This project tracks official upstream releases by the [LenovoLegionToolkit-Team](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) while incorporating platform-specific fixes and concurrency hardening for LOQ hardware.
+## Why this build exists
 
-## About this Build
+Lenovo Legion Toolkit was built for Legion laptops first. Most of it works on LOQ machines, too, but newer LOQ motherboards and BIOS revisions act up around Modern Standby, AC plug/unplug events, and fan WMI calls.
 
-Lenovo Legion Toolkit was originally designed for the Legion ecosystem. While upstream provides broad compatibility, certain newer LOQ motherboards, BIOS revisions, and power controllers behave slightly differently under Windows Modern Standby and rapid power transitions.
+This build tracks upstream v2.38.0.0 and adds fixes for those LOQ quirks:
 
-This build addresses those platform-specific behaviors while preserving 100% upstream feature parity:
+- Power mode switching stays put on AC instead of flickering between Quiet and Balance when EC WMI events and the dispatcher overlap.
+- Quiet mode keeps Windows on Best Power Efficiency while plugged in.
+- Display refresh rate sticks across reboots, sleep/wake cycles, and AC changes.
+- On AC startup and resume, the app briefly wakes the NVIDIA dGPU so the Advanced Optimus tray icon shows up.
+- Custom mode ignores unsupported `FanFullSpeed` WMI calls and fan table timeouts on LOQ boards instead of failing the whole preset.
+- Extra concurrency, memory, and update-security fixes from local audits, plus a standalone NSIS installer.
 
-- **Power Mode Switching Stability**: Fixed a concurrency feedback loop between EC WMI events and the dispatcher that caused rapid mode flickering (LED cycling between Quiet and Balance) when on AC power.
-- **Native Windows Power Mode on AC**: Quiet mode cleanly stays on *Best Power Efficiency* on AC power without firmware rejection or fallback loops.
-- **Refresh Rate Persistence**: Prevents display refresh rate from unexpectedly reverting across reboots, sleep/wake cycles, and AC adapter transitions.
-- **Advanced Optimus Wake Handshake**: Added an automatic dGPU pulse kick during AC startup/wake to ensure the NVIDIA Dynamic Display Mode tray icon appears reliably.
-- **Custom Mode Compatibility**: Gracefully handles unsupported `FanFullSpeed` WMI calls and fan table timeouts on LOQ motherboards, preventing custom presets from failing.
-- **Lifecycle & Memory Hardening**: Centralized control attach/detach hooks to eliminate lingering event subscriptions when switching views, decoupled static system listeners, and serialized delayed power transitions.
-- **Upstream Parity (v2.38.0.0)**: Synced with upstream v2.38.0.0, including multi-fan motherboard sensor support, missing-battery handling, updated Vantage/Legion Space disablers, and Crowdin localizations.
-- **Standalone NSIS Installer**: Packaged into a clean setup installer with automatic elevation and shortcut management.
+## Upstream
 
-## Upstream Project
+Almost all of the app comes from **Bartosz Cichecki** and the [LenovoLegionToolkit-Team](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) maintainers and contributors.
 
-All credit for the core application architecture, features, and continuous development belongs to the original creator **Bartosz Cichecki** and the [LenovoLegionToolkit-Team](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit) maintainers and contributors.
-
-We strongly recommend using the [official releases](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit/releases) whenever possible. This custom build is intended only for LOQ users experiencing the specific hardware and timing issues described above.
+Use the [official releases](https://github.com/LenovoLegionToolkit-Team/LenovoLegionToolkit/releases) unless you actually run into the LOQ issues listed above.
 
 ## Requirements
 
 - Windows 10 or 11 (64-bit)
 - Microsoft .NET Desktop Runtime 9.0 (x64)
-- Compatible Lenovo LOQ or Legion laptop
+- A supported Lenovo LOQ or Legion laptop
 
-## Building from Source
+## Building from source
+
+Install the .NET 9 SDK and NSIS, then run:
 
 ```cmd
-# Requires .NET 9 SDK and NSIS
 make_nsis.bat
 ```
-The installer executable will be generated in `build_installer/`.
+
+The installer lands in `build_installer/`.
 
 ## License
 
-Licensed under the **GNU General Public License v3.0** (same as upstream).
+GNU General Public License v3.0, same as upstream.

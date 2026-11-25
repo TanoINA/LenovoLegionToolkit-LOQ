@@ -84,14 +84,17 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
         _percentProcessorPerformanceCounter.Reset();
         _percentProcessorPerformanceCounter.NextValue();
 
-        if (GetSystemTimes(out var idle, out var kernel, out var user))
+        lock (_cpuCalcLock)
         {
-            _prevIdleTime = ToUInt64(idle);
-            _prevKernelTime = ToUInt64(kernel);
-            _prevUserTime = ToUInt64(user);
-        }
+            if (GetSystemTimes(out var idle, out var kernel, out var user))
+            {
+                _prevIdleTime = ToUInt64(idle);
+                _prevKernelTime = ToUInt64(kernel);
+                _prevUserTime = ToUInt64(user);
+            }
 
-        _lastCpuCalculationTick = DateTime.UtcNow.Ticks;
+            _lastCpuCalculationTick = DateTime.UtcNow.Ticks;
+        }
 
         await Task.Delay(500).ConfigureAwait(false);
 
@@ -169,11 +172,11 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
 
     private static async Task<int> GetCachedSensorValueAsync(Func<Task<int>> query, int? cachedValue, Action<int> updateCache)
     {
-        if (cachedValue is >= 0)
+        if (cachedValue is > 0)
             return cachedValue.Value;
 
         var value = await QuerySensorValueAsync(query).ConfigureAwait(false);
-        if (value >= 0)
+        if (value > 0)
             updateCache(value);
 
         return value;
@@ -196,8 +199,8 @@ public abstract class AbstractSensorsController(GPUController gpuController) : I
 
     public virtual async Task<FanSpeedTable> GetFanSpeedsAsync()
     {
-        var cpuFanSpeed = await GetCpuCurrentFanSpeedAsync().ConfigureAwait(false);
-        var gpuFanSpeed = await GetGpuCurrentFanSpeedAsync().ConfigureAwait(false);
+        var cpuFanSpeed = await QuerySensorValueAsync(GetCpuCurrentFanSpeedAsync).ConfigureAwait(false);
+        var gpuFanSpeed = await QuerySensorValueAsync(GetGpuCurrentFanSpeedAsync).ConfigureAwait(false);
         var systemFans = await GetSystemFansAsync().ConfigureAwait(false);
         return new FanSpeedTable(cpuFanSpeed, gpuFanSpeed, systemFans);
     }

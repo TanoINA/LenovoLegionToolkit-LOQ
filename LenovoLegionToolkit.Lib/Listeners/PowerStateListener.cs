@@ -292,7 +292,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             MessagingCenter.Publish(new FanStateMessage(FanState.Manual));
         }
 
-        _ = Task.Run(async () =>
+        TrackCallback(Task.Run(async () =>
         {
             try
             {
@@ -304,13 +304,14 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                     await refreshRateFeature.EnsureCorrectRefreshRateIsSetAsync().ConfigureAwait(false);
                 }
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Failed to ensure refresh rate after resume.", ex);
             }
-        });
+        }));
 
-        _ = NotifyDgpuAsync(generation);
+        TrackCallback(NotifyDgpuAsync(generation));
     }
 
     private async Task HandlePowerAdapterStatusChangeAsync(long generation)
@@ -323,7 +324,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             await _powerModeFeature.EnsureGodModeStateIsAppliedAsync().ConfigureAwait(false);
         }
 
-        _ = Task.Run(async () =>
+        TrackCallback(Task.Run(async () =>
         {
             try
             {
@@ -335,13 +336,14 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                     await refreshRateFeature.EnsureCorrectRefreshRateIsSetAsync().ConfigureAwait(false);
                 }
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Failed to ensure refresh rate after power adapter change.", ex);
             }
-        });
+        }));
 
-        _ = NotifyDgpuAsync(generation);
+        TrackCallback(NotifyDgpuAsync(generation));
     }
 
     private static bool HasExtensionProvider(string capability) =>
@@ -356,7 +358,14 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
             return;
         }
 
-        await _notifyLock.WaitAsync().ConfigureAwait(false);
+        var token = _lifetimeCts.Token;
+        try
+        {
+            await _notifyLock.WaitAsync(token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) { return; }
+        catch (ObjectDisposedException) { return; }
+
         try
         {
             if ((DateTime.Now - _lastNotifyTime).TotalSeconds < 10)
@@ -369,22 +378,29 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         }
         finally
         {
-            _notifyLock.Release();
+            try { _notifyLock.Release(); } catch (ObjectDisposedException) { }
         }
 
         try
         {
             if (await _dgpuNotify.IsSupportedAsync().ConfigureAwait(false))
             {
-                await Task.Delay(TimeSpan.FromSeconds(5), _lifetimeCts.Token).ConfigureAwait(false);
-                if (generation != Volatile.Read(ref _powerGeneration)) return;
+                await Task.Delay(TimeSpan.FromSeconds(5), token).ConfigureAwait(false);
+                if (token.IsCancellationRequested || generation != Volatile.Read(ref _powerGeneration)) return;
                 await _dgpuNotify.NotifyAsync().ConfigureAwait(false);
             }
+        }
+        catch (OperationCanceledException)
+        {
+            return;
         }
         catch (Exception ex)
         {
             Log.Instance.Trace($"Error in _dgpuNotify: {ex}");
         }
+
+        if (token.IsCancellationRequested || generation != Volatile.Read(ref _powerGeneration))
+            return;
 
         try
         {
@@ -402,6 +418,7 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
                 }
             }
         }
+        catch (OperationCanceledException) { }
         catch (Exception ex)
         {
             Log.Instance.Trace($"Error in PulseDgpuAsync: {ex}");
@@ -461,11 +478,14 @@ public sealed class PowerStateListener : IListener<PowerStateListener.ChangedEve
         StopAsync().GetAwaiter().GetResult();
         Task[] callbacks;
         lock (_callbackTasksLock) callbacks = [.. _callbackTasks];
-        Task.WhenAll(callbacks).GetAwaiter().GetResult();
-        _processingLock.Dispose();
-        _notifyLock.Dispose();
-        _lifetimeCts.Dispose();
+        // Bound wait to avoid deadlocking the WPF UI thread if a callback dispatches synchronously to it.
+        var drained = callbacks.Length == 0 || Task.WhenAll(callbacks).Wait(TimeSpan.FromSeconds(2));
+        if (drained)
+        {
+            _processingLock.Dispose();
+            _notifyLock.Dispose();
+            _lifetimeCts.Dispose();
+        }
         _recipientHandle?.Dispose();
-
     }
 }

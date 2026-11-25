@@ -210,10 +210,13 @@ public static class Devices
         }
     }
 
-    public static void InvalidateBattery()
+    public static void InvalidateBattery(SafeFileHandle? expectedHandle = null)
     {
         lock (Lock)
         {
+            if (expectedHandle is not null && !ReferenceEquals(_battery, expectedHandle))
+                return;
+
             _battery?.Dispose();
             _battery = null;
             _batteryProbedAt = DateTime.MinValue;
@@ -386,10 +389,18 @@ public static class Devices
             var result2 = PInvoke.SetupDiEnumDeviceInterfaces(deviceHandle, null, devClassHidGuid, currentIndex,
                 ref deviceInterfaceData);
             if (!result2)
-                PInvokeExtensions.ThrowIfWin32Error("SetupDiEnumDeviceInterfaces");
+            {
+                var errorCode = Marshal.GetLastWin32Error();
+                if (errorCode == PInvokeExtensions.ERROR_NO_MORE_ITEMS)
+                    break;
+
+                PInvokeExtensions.ThrowIfWin32Error(errorCode, "SetupDiEnumDeviceInterfaces");
+            }
 
             var requiredSize = 0u;
             _ = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, null, 0, &requiredSize, null);
+            if (requiredSize < (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>())
+                continue;
 
             string devicePath;
             var output = IntPtr.Zero;
@@ -463,96 +474,113 @@ public static class Devices
             HWND.Null,
             SETUP_DI_GET_CLASS_DEVS_FLAGS.DIGCF_PRESENT | SETUP_DI_GET_CLASS_DEVS_FLAGS.DIGCF_DEVICEINTERFACE);
 
-        uint index = 0;
-        while (true)
+        try
         {
-            var currentIndex = index;
-            index++;
-
-            var deviceInfoData = new SP_DEVINFO_DATA { cbSize = (uint)Marshal.SizeOf<SP_DEVINFO_DATA>() };
-            var result1 = PInvoke.SetupDiEnumDeviceInfo(deviceHandle, currentIndex, ref deviceInfoData);
-            if (!result1)
+            uint index = 0;
+            while (true)
             {
-                var errorCode = Marshal.GetLastWin32Error();
-                if (errorCode == PInvokeExtensions.ERROR_NO_MORE_ITEMS)
-                    break;
+                var currentIndex = index;
+                index++;
 
-                PInvokeExtensions.ThrowIfWin32Error(errorCode, "SetupDiEnumDeviceInfo");
-            }
-
-            var deviceInterfaceData = new SP_DEVICE_INTERFACE_DATA { cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DATA>() };
-
-            var result2 = PInvoke.SetupDiEnumDeviceInterfaces(deviceHandle, null, devClassHidGuid, currentIndex,
-                ref deviceInterfaceData);
-            if (!result2)
-                PInvokeExtensions.ThrowIfWin32Error("SetupDiEnumDeviceInterfaces");
-
-            var requiredSize = 0u;
-            _ = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, null, 0, &requiredSize, null);
-
-            string devicePath;
-            var output = IntPtr.Zero;
-            try
-            {
-                output = Marshal.AllocHGlobal((int)requiredSize);
-                var deviceDetailData = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)output.ToPointer();
-                deviceDetailData->cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
-
-                var result3 = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, deviceDetailData, requiredSize, null, null);
-                if (!result3)
-                    PInvokeExtensions.ThrowIfWin32Error("SetupDiEnumDeviceInterfaces");
-
-                fixed (char* e0Ptr = &deviceDetailData->DevicePath.e0)
-                    devicePath = new string(e0Ptr);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(output);
-            }
-
-            var fileHandle = PInvoke.CreateFile(devicePath,
-                (uint)FILE_ACCESS_RIGHTS.FILE_READ_DATA | (uint)FILE_ACCESS_RIGHTS.FILE_WRITE_DATA,
-                FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
-                null,
-                FILE_CREATION_DISPOSITION.OPEN_EXISTING,
-                FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
-                null);
-
-            if (fileHandle.IsInvalid)
-                continue;
-
-            if (!PInvoke.HidD_GetAttributes(fileHandle, out var hidAttributes))
-            {
-                fileHandle.Dispose();
-                continue;
-            }
-
-            PHIDP_PREPARSED_DATA preParsedData = default;
-            try
-            {
-                PInvoke.HidD_GetPreparsedData(fileHandle, out preParsedData);
-                PInvoke.HidP_GetCaps(preParsedData, out var caps);
-
-                if (hidAttributes.VendorID == vendorId &&
-                    caps.FeatureReportByteLength == descriptorLength)
+                var deviceInfoData = new SP_DEVINFO_DATA { cbSize = (uint)Marshal.SizeOf<SP_DEVINFO_DATA>() };
+                var result1 = PInvoke.SetupDiEnumDeviceInfo(deviceHandle, currentIndex, ref deviceInfoData);
+                if (!result1)
                 {
-                    Log.Instance.Trace($"Found device. [vendorId={hidAttributes.VendorID:X2}, productId={hidAttributes.ProductID:X2}, descriptorLength={caps.FeatureReportByteLength}]");
+                    var errorCode = Marshal.GetLastWin32Error();
+                    if (errorCode == PInvokeExtensions.ERROR_NO_MORE_ITEMS)
+                        break;
 
-                    devices.Add(fileHandle);
+                    PInvokeExtensions.ThrowIfWin32Error(errorCode, "SetupDiEnumDeviceInfo");
                 }
-                else
+
+                var deviceInterfaceData = new SP_DEVICE_INTERFACE_DATA { cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DATA>() };
+
+                var result2 = PInvoke.SetupDiEnumDeviceInterfaces(deviceHandle, null, devClassHidGuid, currentIndex,
+                    ref deviceInterfaceData);
+                if (!result2)
+                {
+                    var errorCode = Marshal.GetLastWin32Error();
+                    if (errorCode == PInvokeExtensions.ERROR_NO_MORE_ITEMS)
+                        break;
+
+                    PInvokeExtensions.ThrowIfWin32Error(errorCode, "SetupDiEnumDeviceInterfaces");
+                }
+
+                var requiredSize = 0u;
+                _ = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, null, 0, &requiredSize, null);
+                if (requiredSize < (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>())
+                    continue;
+
+                string devicePath;
+                var output = IntPtr.Zero;
+                try
+                {
+                    output = Marshal.AllocHGlobal((int)requiredSize);
+                    var deviceDetailData = (SP_DEVICE_INTERFACE_DETAIL_DATA_W*)output.ToPointer();
+                    deviceDetailData->cbSize = (uint)Marshal.SizeOf<SP_DEVICE_INTERFACE_DETAIL_DATA_W>();
+
+                    var result3 = PInvoke.SetupDiGetDeviceInterfaceDetail(new HDEVINFO(deviceHandle.DangerousGetHandle()), &deviceInterfaceData, deviceDetailData, requiredSize, null, null);
+                    if (!result3)
+                        PInvokeExtensions.ThrowIfWin32Error("SetupDiEnumDeviceInterfaces");
+
+                    fixed (char* e0Ptr = &deviceDetailData->DevicePath.e0)
+                        devicePath = new string(e0Ptr);
+                }
+                finally
+                {
+                    Marshal.FreeHGlobal(output);
+                }
+
+                var fileHandle = PInvoke.CreateFile(devicePath,
+                    (uint)FILE_ACCESS_RIGHTS.FILE_READ_DATA | (uint)FILE_ACCESS_RIGHTS.FILE_WRITE_DATA,
+                    FILE_SHARE_MODE.FILE_SHARE_READ | FILE_SHARE_MODE.FILE_SHARE_WRITE,
+                    null,
+                    FILE_CREATION_DISPOSITION.OPEN_EXISTING,
+                    FILE_FLAGS_AND_ATTRIBUTES.FILE_ATTRIBUTE_NORMAL,
+                    null);
+
+                if (fileHandle.IsInvalid)
+                    continue;
+
+                if (!PInvoke.HidD_GetAttributes(fileHandle, out var hidAttributes))
                 {
                     fileHandle.Dispose();
+                    continue;
+                }
+
+                PHIDP_PREPARSED_DATA preParsedData = default;
+                try
+                {
+                    PInvoke.HidD_GetPreparsedData(fileHandle, out preParsedData);
+                    PInvoke.HidP_GetCaps(preParsedData, out var caps);
+
+                    if (hidAttributes.VendorID == vendorId &&
+                        caps.FeatureReportByteLength == descriptorLength)
+                    {
+                        Log.Instance.Trace($"Found device. [vendorId={hidAttributes.VendorID:X2}, productId={hidAttributes.ProductID:X2}, descriptorLength={caps.FeatureReportByteLength}]");
+
+                        devices.Add(fileHandle);
+                    }
+                    else
+                    {
+                        fileHandle.Dispose();
+                    }
+                }
+                finally
+                {
+                    if (preParsedData != IntPtr.Zero)
+                        PInvoke.HidD_FreePreparsedData(preParsedData);
                 }
             }
-            finally
-            {
-                if (preParsedData != IntPtr.Zero)
-                    PInvoke.HidD_FreePreparsedData(preParsedData);
-            }
-        }
 
-        return devices;
+            return devices;
+        }
+        catch
+        {
+            foreach (var d in devices)
+                d.Dispose();
+            throw;
+        }
     }
 
     #endregion

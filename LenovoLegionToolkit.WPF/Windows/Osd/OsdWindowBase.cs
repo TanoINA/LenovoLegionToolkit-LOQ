@@ -30,7 +30,6 @@ public abstract class OsdWindowBase : Window
 
     #region Threshold Constants
 
-    protected int _uiUpdateThrottleMs = 0;
     protected const double MAX_FRAME_TIME_MS = 10.0;
     protected const long FRAMETIME_TIMEOUT_TICKS = 2 * 10_000_000;
 
@@ -61,7 +60,6 @@ public abstract class OsdWindowBase : Window
     private bool _isClosed;
     protected readonly StringBuilder _stringBuilder = new(64);
 
-    protected DateTime _lastUpdate = DateTime.MinValue;
     private long _lastValidFpsTick;
     private long _lastFpsUiUpdateTick;
 
@@ -120,10 +118,6 @@ public abstract class OsdWindowBase : Window
 
         if (IsLoaded)
             UpdateMeasurementControlsVisibility();
-
-        var mi = await Compatibility.GetMachineInformationAsync();
-        if (!IsLoaded)
-            return;
     }
 
     private void SubscribeEvents()
@@ -235,11 +229,20 @@ public abstract class OsdWindowBase : Window
 
     private async void OnLoaded(object? sender, RoutedEventArgs e)
     {
-        await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+        try
+        {
+            await Dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
+            if (_isClosed)
+                return;
 
-        UpdateMeasurementControlsVisibility();
-        UpdateLayout();
-        SetWindowPosition();
+            UpdateMeasurementControlsVisibility();
+            UpdateLayout();
+            SetWindowPosition();
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"OSD load positioning failed.", ex);
+        }
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)
@@ -335,7 +338,11 @@ public abstract class OsdWindowBase : Window
 
     private void OnDisplaySettingsChanged(object? sender, EventArgs e)
     {
-        Dispatcher.BeginInvoke(SetWindowPosition);
+        Dispatcher.BeginInvoke(() =>
+        {
+            if (!_isClosed)
+                SetWindowPosition();
+        });
     }
 
     private void OnDpiChanged(object sender, DpiChangedEventArgs e)
@@ -347,6 +354,9 @@ public abstract class OsdWindowBase : Window
     {
         Dispatcher.BeginInvoke(() =>
         {
+            if (_isClosed)
+                return;
+
             if (e.Locked)
             {
                 if (IsVisible)
@@ -390,6 +400,7 @@ public abstract class OsdWindowBase : Window
             else
             {
                 _sensorSubscription?.Dispose();
+                _sensorSubscription = null;
                 CheckAndUpdateFpsMonitoring();
             }
         }
@@ -412,6 +423,9 @@ public abstract class OsdWindowBase : Window
 
     private async Task StopSensorLoopAsync()
     {
+        _sensorSubscription?.Dispose();
+        _sensorSubscription = null;
+
         var cancellationTokenSource = _cts;
         var task = _sensorLoopTask;
         _cts = null;
@@ -434,6 +448,7 @@ public abstract class OsdWindowBase : Window
     private void StartHardwareSensorUpdates()
     {
         _sensorSubscription?.Dispose();
+        _sensorSubscription = null;
 
         if (!_applicationSettings.Store.EnableHardwareSensors)
             return;
@@ -446,37 +461,45 @@ public abstract class OsdWindowBase : Window
 
     private async void OnWindowClosed(object? sender, EventArgs e)
     {
-        _isClosed = true;
-        _OsdSettings.SynchronizeStore();
-
-        SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
-        _sessionListener.Changed -= OnSessionLockStateChanged;
-
-        await _visibilityLock.WaitAsync();
         try
         {
-            await StopSensorLoopAsync();
+            _isClosed = true;
+            _OsdSettings.SynchronizeStore();
+
+            SystemEvents.DisplaySettingsChanged -= OnDisplaySettingsChanged;
+            _sessionListener.Changed -= OnSessionLockStateChanged;
+
+            await _visibilityLock.WaitAsync();
+            try
+            {
+                await StopSensorLoopAsync();
+            }
+            catch (Exception ex)
+            {
+                Log.Instance.Trace($"Failed to stop OSD sensor loop during close.", ex);
+            }
+            finally
+            {
+                _refreshLock.Dispose();
+                _visibilityLock.Release();
+            }
+
+            _fpsController.FpsDataUpdated -= OnFpsDataUpdated;
+            if (_fpsMonitoringStarted)
+            {
+                _fpsMonitoringStarted = false;
+                StopFpsMonitoring();
+            }
+
+            MessagingCenter.Unsubscribe(this);
+
+            if (ReferenceEquals(App.Current.OsdWindow, this))
+                App.Current.OsdWindow = null;
         }
         catch (Exception ex)
         {
-            Log.Instance.Trace($"Failed to stop OSD sensor loop during close.", ex);
+            Log.Instance.Trace($"OSD window close cleanup failed.", ex);
         }
-        finally
-        {
-            _refreshLock.Dispose();
-            _visibilityLock.Release();
-        }
-
-        _fpsController.FpsDataUpdated -= OnFpsDataUpdated;
-        if (_fpsMonitoringStarted)
-        {
-            _fpsMonitoringStarted = false;
-            StopFpsMonitoring();
-        }
-
-        MessagingCenter.Unsubscribe(this);
-
-        App.Current.OsdWindow = null;
     }
 
     protected virtual void ApplyAppearanceSettings()
@@ -861,10 +884,6 @@ public abstract class OsdWindowBase : Window
         }
 
         if (token.IsCancellationRequested) return;
-
-        if (_uiUpdateThrottleMs > 0 && (DateTime.Now - _lastUpdate).TotalMilliseconds < _uiUpdateThrottleMs) return;
-
-        _lastUpdate = DateTime.Now;
 
         var showAverageCpuFrequency = _hardwareSensorSettings.Store.ShowCpuAverageFrequency;
         var snapshot = new SensorSnapshot

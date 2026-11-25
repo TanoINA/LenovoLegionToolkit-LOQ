@@ -84,7 +84,7 @@ public class GPUController
 
             var cancellationTokenSource = new CancellationTokenSource();
             _refreshCancellationTokenSource = cancellationTokenSource;
-            _ = RefreshLoopAsync(startupDelay, cancellationTokenSource.Token);
+            _ = RefreshLoopAsync(startupDelay, cancellationTokenSource);
         }
         finally
         {
@@ -185,8 +185,9 @@ public class GPUController
         }
     }
 
-    private async Task RefreshLoopAsync(int delay, CancellationToken token)
+    private async Task RefreshLoopAsync(int delay, CancellationTokenSource cancellationTokenSource)
     {
+        var token = cancellationTokenSource.Token;
         try
         {
             Log.Instance.Trace($"Initializing NVAPI...");
@@ -207,6 +208,7 @@ public class GPUController
             {
                 token.ThrowIfCancellationRequested();
 
+                GPUStatus status;
                 await _refreshGate.WaitAsync(token).ConfigureAwait(false);
                 try
                 {
@@ -214,12 +216,21 @@ public class GPUController
 
                     using (await _stateLock.LockAsync(token).ConfigureAwait(false))
                     {
-                        Refreshed?.Invoke(this, new GPUStatus(_state, _performanceState, _processes, _sleepBlockerReason));
+                        status = new GPUStatus(_state, _performanceState, _processes, _sleepBlockerReason);
                     }
                 }
                 finally
                 {
                     _refreshGate.Release();
+                }
+
+                try
+                {
+                    Refreshed?.Invoke(this, status);
+                }
+                catch (Exception ex)
+                {
+                    Log.Instance.Trace($"GPU refreshed subscriber threw.", ex);
                 }
 
                 if (Interval > 0)
@@ -235,6 +246,10 @@ public class GPUController
             // faults the task and kills GPU monitoring until app restart. Log and exit
             // the loop gracefully instead.
             Log.Instance.Trace($"GPU refresh loop terminated unexpectedly.", ex);
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _refreshCancellationTokenSource, null, cancellationTokenSource);
         }
     }
 

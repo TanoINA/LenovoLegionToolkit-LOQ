@@ -35,6 +35,7 @@ public partial class GodModeSettingsWindow
     private bool _isSaving;
     private bool _isEditingPreset;
     private bool _isLoadingPreset;
+    private bool _isPcfAvailable;
 
     private const int BIOS_OC_MODE_ENABLED = 3;
 
@@ -86,15 +87,17 @@ public partial class GodModeSettingsWindow
 
             var stateTask = Task.Run(_godModeController.GetStateAsync);
             var defaultsTask = Task.Run(_godModeController.GetDefaultsInOtherPowerModesAsync);
+            var pcfTask = Task.Run(_godModeController.IsPcfAvailable);
             var softwareTask = knownSoftwareStatuses is null
                 ? Task.Run(_godModeController.GetSoftwareStatusesAsync)
                 : Task.FromResult(knownSoftwareStatuses);
             var hardwareDelay = waitForHardware ? Task.Delay(500) : Task.CompletedTask;
 
-            await Task.WhenAll(stateTask, defaultsTask, softwareTask, hardwareDelay);
+            await Task.WhenAll(stateTask, defaultsTask, pcfTask, softwareTask, hardwareDelay);
 
             _state = await stateTask;
             _defaults = await defaultsTask;
+            _isPcfAvailable = await pcfTask;
             UpdateSoftwareWarnings(await softwareTask);
             _capabilityWarningInfoBar.IsOpen = _godModeController.HasCapabilityErrors();
 
@@ -250,7 +253,7 @@ public partial class GodModeSettingsWindow
             _gpuConfigurableTGPControl.Set(preset.GPUConfigurableTGP);
             _gpuTemperatureLimitControl.Set(preset.GPUTemperatureLimit);
             _gpuTotalProcessingPowerTargetOnAcOffsetFromBaselineControl.MaximumValue =
-                _godModeController.IsPcfAvailable() && (preset.MaxValueOffset ?? 0) >= _maxValueOffsetNumberBox.Maximum
+                _isPcfAvailable && (preset.MaxValueOffset ?? 0) >= _maxValueOffsetNumberBox.Maximum
                     ? GodModePlatformConfiguration.MaxPowerTargetOffset
                     : null;
             _gpuTotalProcessingPowerTargetOnAcOffsetFromBaselineControl.Set(preset.GPUTotalProcessingPowerTargetOnAcOffsetFromBaseline);

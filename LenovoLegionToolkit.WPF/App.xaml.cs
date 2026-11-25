@@ -501,38 +501,45 @@ public partial class App
 
     private async Task ShutdownCoreAsync()
     {
-        await SafeExecuteAsync<AIController>(c => c.StopAsync());
-
-        await SafeExecuteAsync<RGBKeyboardBacklightController>(async c =>
+        try
         {
-            if (await c.IsSupportedAsync()) await c.SetLightControlOwnerAsync(false);
-        });
+            await SafeExecuteAsync<AIController>(c => c.StopAsync());
 
-        await SafeExecuteAsync<SpectrumKeyboardBacklightController>(async c =>
+            await SafeExecuteAsync<RGBKeyboardBacklightController>(async c =>
+            {
+                if (await c.IsSupportedAsync()) await c.SetLightControlOwnerAsync(false);
+            });
+
+            await SafeExecuteAsync<SpectrumKeyboardBacklightController>(async c =>
+            {
+                if (await c.IsSupportedAsync()) await c.StopAuroraIfNeededAsync();
+            });
+
+            await SafeExecuteAsync<PowerStateListener>(c => c.StopAsync());
+            await SafeExecuteAsync<DgpuAwakeManager>(async c => await c.DisposeAsync());
+            await SafeExecuteAsync<NativeWindowsMessageListener>(c => c.StopAsync());
+            await SafeExecuteAsync<SessionLockUnlockListener>(c => c.StopAsync());
+            await SafeExecuteAsync<HWiNFOIntegration>(c => c.StopAsync());
+            await SafeExecuteAsync<IpcServer>(c => c.StopAsync());
+            await SafeExecuteAsync<BatteryDischargeRateMonitorService>(c => c.StopAsync());
+            await SafeExecuteAsync<ExtensionManager>(c => c.StopAsync());
+            await SafeExecuteAsync<GodModeController>(c => c.RestoreDefaultsInOtherPowerModeAsync(PowerModeState.Balance));
+
+            await SafeExecuteAsync<AmdOverclockingController>(c =>
+            {
+                c.SaveShutdownInfo(new ShutdownInfo
+                {
+                    Status = "Normal",
+                    AbnormalCount = 0
+                });
+                return Task.CompletedTask;
+            });
+        }
+        finally
         {
-            if (await c.IsSupportedAsync()) await c.StopAuroraIfNeededAsync();
-        });
-
-        await SafeExecuteAsync<NativeWindowsMessageListener>(c => c.StopAsync());
-        await SafeExecuteAsync<SessionLockUnlockListener>(c => c.StopAsync());
-        await SafeExecuteAsync<HWiNFOIntegration>(c => c.StopAsync());
-        await SafeExecuteAsync<IpcServer>(c => c.StopAsync());
-        await SafeExecuteAsync<BatteryDischargeRateMonitorService>(c => c.StopAsync());
-        await SafeExecuteAsync<ExtensionManager>(c => c.StopAsync());
-        await SafeExecuteAsync<GodModeController>(c => c.RestoreDefaultsInOtherPowerModeAsync(PowerModeState.Balance));
-
-        var feature = IoCContainer.Resolve<AmdOverclockingController>();
-
-        var cleanInfo = new ShutdownInfo
-        {
-            Status = "Normal",
-            AbnormalCount = 0
-        };
-
-        feature.SaveShutdownInfo(cleanInfo);
-
-        if (!Dispatcher.HasShutdownStarted)
-            Dispatcher.Invoke(Shutdown);
+            if (!Dispatcher.HasShutdownStarted)
+                Dispatcher.Invoke(Shutdown);
+        }
     }
 
     private static async Task SafeExecuteAsync<T>(Func<T, Task> action) where T : class
@@ -647,9 +654,12 @@ public partial class App
 
         MainWindow = MainWindowInstance = new MainWindow
         {
-            WindowStartupLocation = WindowStartupLocation.CenterScreen
+            WindowStartupLocation = WindowStartupLocation.CenterScreen,
+            TrayTooltipEnabled = !AppFlags.Instance.DisableTrayTooltip,
+            DisableConflictingSoftwareWarning = AppFlags.Instance.DisableConflictingSoftwareWarning
         };
 
+        InitSetLogIndicator();
         MainWindow.Show();
 
         if (OsdWindow != null)
@@ -666,13 +676,8 @@ public partial class App
             return;
         }
 
-        OsdWindow = settingsStore.SelectedStyleIndex switch
-        {
-            1 => new OsdBarWindow(),
-            _ => new OsdPanelWindow()
-        };
-
-        OsdWindow.Show();
+        EnsureOsdWindowCreated(settingsStore.SelectedStyleIndex == 1);
+        OsdWindow?.Show();
     }
 
     private bool EnsureSingleInstance()
@@ -1250,7 +1255,8 @@ public partial class App
         OsdWindow = isBar ? new OsdBarWindow() : new OsdPanelWindow();
         OsdWindow.Closed += (s, e) =>
         {
-            OsdWindow = null;
+            if (ReferenceEquals(OsdWindow, s))
+                OsdWindow = null;
         };
     }
 

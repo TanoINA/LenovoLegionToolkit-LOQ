@@ -62,33 +62,45 @@ public partial class DiscreteGPUManagementWindow : BaseWindow
 
     private void InitializePStateOptions()
     {
-        var items = new List<PStateItemViewModel>
+        var wasInitializing = _isInitializing;
+        _isInitializing = true;
+        try
         {
-            new() { Id = GPUController.AutoPStateId, DisplayName = Resource.DiscreteGPUControl_PStateAuto }
-        };
+            var items = new List<PStateItemViewModel>
+            {
+                new() { Id = GPUController.AutoPStateId, DisplayName = Resource.DiscreteGPUControl_PStateAuto }
+            };
 
-        var supportedStates = _gpuController.GetSupportedPerformanceStates();
-        if (supportedStates.Contains(PerformanceStateId.P0_3DPerformance))
-        {
-            items.Add(new PStateItemViewModel { Id = GPUController.RatedTdpPStateId, DisplayName = Resource.DiscreteGPUControl_PStateRatedTdp });
+            var supportedStates = _gpuController.GetSupportedPerformanceStates();
+            if (supportedStates.Contains(PerformanceStateId.P0_3DPerformance))
+            {
+                items.Add(new PStateItemViewModel { Id = GPUController.RatedTdpPStateId, DisplayName = Resource.DiscreteGPUControl_PStateRatedTdp });
+            }
+
+            foreach (var state in supportedStates)
+            {
+                items.Add(new PStateItemViewModel { Id = (int)state, DisplayName = $"P{(uint)state}" });
+            }
+
+            var hasExistingChoices = _pStateComboBox.ItemsSource is List<PStateItemViewModel> existing && existing.Count > 1;
+            var previouslySelectedId = hasExistingChoices
+                ? (_pStateComboBox.SelectedItem as PStateItemViewModel)?.Id ?? _settings.Store.LockedPStateId
+                : _settings.Store.LockedPStateId;
+
+            _pStateComboBox.ItemsSource = items;
+            _pStateComboBox.DisplayMemberPath = nameof(PStateItemViewModel.DisplayName);
+            _pStateComboBox.SelectedValuePath = nameof(PStateItemViewModel.Id);
+
+            var selected = items.FirstOrDefault(i => i.Id == previouslySelectedId) ?? items[0];
+            _pStateComboBox.SelectedItem = selected;
+
+            InitializePinModeOptions();
+            UpdatePinModeEnabled();
         }
-
-        foreach (var state in supportedStates)
+        finally
         {
-            items.Add(new PStateItemViewModel { Id = (int)state, DisplayName = $"P{(uint)state}" });
+            _isInitializing = wasInitializing;
         }
-
-        var previouslySelectedId = (_pStateComboBox.SelectedItem as PStateItemViewModel)?.Id ?? _settings.Store.LockedPStateId;
-
-        _pStateComboBox.ItemsSource = items;
-        _pStateComboBox.DisplayMemberPath = nameof(PStateItemViewModel.DisplayName);
-        _pStateComboBox.SelectedValuePath = nameof(PStateItemViewModel.Id);
-
-        var selected = items.FirstOrDefault(i => i.Id == previouslySelectedId) ?? items[0];
-        _pStateComboBox.SelectedItem = selected;
-
-        InitializePinModeOptions();
-        UpdatePinModeEnabled();
     }
 
     private void InitializePinModeOptions()

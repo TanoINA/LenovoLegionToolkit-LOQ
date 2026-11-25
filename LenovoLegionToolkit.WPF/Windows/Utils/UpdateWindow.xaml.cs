@@ -31,7 +31,9 @@ public partial class UpdateWindow : IProgress<float>
 
     private void Hyperlink_Executed(object sender, ExecutedRoutedEventArgs e)
     {
-        if (e.Parameter is string url && Uri.TryCreate(url, UriKind.Absolute, out var uri))
+        if (e.Parameter is string url &&
+            Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps))
         {
             uri.Open();
             e.Handled = true;
@@ -40,33 +42,34 @@ public partial class UpdateWindow : IProgress<float>
 
     private async void UpdateWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        var updates = await _updateChecker.GetUpdatesAsync();
-
-        if (updates.Length > 0)
+        try
         {
-            var stringBuilder = new StringBuilder();
-            foreach (var update in updates)
-            {
-                stringBuilder.AppendLine("**" + update.Title + "**   _(" + update.Date.ToString("D") + ")_")
-                    .AppendLine()
-                    .AppendLine(update.Description)
-                    .AppendLine();
-            }
+            var updates = await _updateChecker.GetUpdatesAsync();
 
-            _markdownViewer.Markdown = stringBuilder.ToString();
-        }
-        else
-        {
-            if (_updateChecker.UpdateFromServer != null)
+            if (updates.Length > 0)
             {
-                if (_updateChecker.UpdateFromServer?.Description.Length > 0)
+                var stringBuilder = new StringBuilder();
+                foreach (var update in updates)
                 {
-                    _markdownViewer.Markdown = _updateChecker.UpdateFromServer?.Description;
+                    stringBuilder.AppendLine("**" + update.Title + "**   _(" + update.Date.ToString("D") + ")_")
+                        .AppendLine()
+                        .AppendLine(update.Description)
+                        .AppendLine();
                 }
-            }
-        }
 
-        _downloadButton.IsEnabled = true;
+                _markdownViewer.Markdown = stringBuilder.ToString();
+            }
+            else if (_updateChecker.UpdateFromServer?.Description.Length > 0)
+            {
+                _markdownViewer.Markdown = _updateChecker.UpdateFromServer?.Description;
+            }
+
+            _downloadButton.IsEnabled = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to load update details.", ex);
+        }
     }
 
     private void UpdateWindow_Closing(object? sender, CancelEventArgs e) => _downloadCancellationTokenSource?.Cancel();

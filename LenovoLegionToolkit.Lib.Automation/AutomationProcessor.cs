@@ -36,7 +36,8 @@ public class AutomationProcessor(
     private List<AutomationPipeline> _pipelines = [];
     private CancellationTokenSource? _cts;
     private int _eventProcessingActive;
-    private IAutomationEvent? _pendingEvent;
+    private readonly object _pendingEventsLock = new();
+    private readonly Dictionary<Type, IAutomationEvent> _pendingEvents = [];
 
     public bool IsEnabled => settings.Store.IsEnabled;
 
@@ -340,14 +341,13 @@ public class AutomationProcessor(
 
     private async Task ProcessEvent(IAutomationEvent e)
     {
-        // Coalesce event bursts: only one event-processing cycle runs at a time.
-        // The latest event is captured via a simple swap under the processing guard:
-        // if a cycle is already running, the caller records its event as pending and
-        // returns; the running cycle picks up the most recent pending event in a
-        // trailing pass. This bounds the number of concurrent processing tasks to 1
-        // while still guaranteeing that the most recent state-changing event is acted
-        // upon (e.g. a PowerMode=Performance event arriving mid-cycle is not dropped).
-        _pendingEvent = e;
+        // Coalesce bursts per event type so rapid repeats of the same event stay latest-wins
+        // without dropping unrelated event types arriving during an active pipeline.
+        lock (_pendingEventsLock)
+        {
+            _pendingEvents[e.GetType()] = e;
+        }
+
         if (Interlocked.CompareExchange(ref _eventProcessingActive, 1, 0) != 0)
         {
             return;
@@ -357,23 +357,39 @@ public class AutomationProcessor(
         {
             try
             {
-                IAutomationEvent? current;
-                while ((current = Interlocked.Exchange(ref _pendingEvent, null)) is not null)
+                while (true)
                 {
-                    try
+                    IAutomationEvent[] batch;
+                    lock (_pendingEventsLock)
                     {
-                        var triggerMatches = await Task.WhenAll(_pipelines.SelectMany(p => p.AllTriggers)
-                                .Select(t => IsMatchingEventSafeAsync(t, current)))
-                            .ConfigureAwait(false);
+                        if (_pendingEvents.Count == 0)
+                            break;
 
-                        if (!triggerMatches.Any(t => t)) continue;
-
-                        Log.Instance.Trace($"Processing event {current}... [type={current.GetType().Name}]");
-                        await RunAsync(current).ConfigureAwait(false);
+                        batch = [.. _pendingEvents.Values];
+                        _pendingEvents.Clear();
                     }
-                    catch (Exception ex)
+
+                    foreach (var current in batch)
                     {
-                        Log.Instance.Trace($"Failed to process event {current?.GetType().Name}.", ex);
+                        try
+                        {
+                            List<AutomationPipeline> pipelines;
+                            using (await _ioLock.LockAsync().ConfigureAwait(false))
+                                pipelines = _pipelines.ToList();
+
+                            var triggerMatches = await Task.WhenAll(pipelines.SelectMany(p => p.AllTriggers)
+                                    .Select(t => IsMatchingEventSafeAsync(t, current)))
+                                .ConfigureAwait(false);
+
+                            if (!triggerMatches.Any(t => t)) continue;
+
+                            Log.Instance.Trace($"Processing event {current}... [type={current.GetType().Name}]");
+                            await RunAsync(current).ConfigureAwait(false);
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Instance.Trace($"Failed to process event {current.GetType().Name}.", ex);
+                        }
                     }
                 }
             }
@@ -382,7 +398,11 @@ public class AutomationProcessor(
                 Interlocked.Exchange(ref _eventProcessingActive, 0);
             }
 
-            if (Volatile.Read(ref _pendingEvent) is null) return;
+            bool hasMore;
+            lock (_pendingEventsLock)
+                hasMore = _pendingEvents.Count > 0;
+
+            if (!hasMore) return;
             if (Interlocked.CompareExchange(ref _eventProcessingActive, 1, 0) != 0) return;
         }
     }

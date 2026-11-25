@@ -10,7 +10,9 @@ internal static class AuthenticodeVerifier
     private const uint WTD_REVOKE_NONE = 0;
     private const uint WTD_CHOICE_FILE = 1;
     private const uint WTD_STATEACTION_IGNORE = 0;
-    private const uint WTD_HASH_ONLY_FLAG = 0x00000400;
+    private const uint WTD_REVOCATION_CHECK_NONE = 0x00000010;
+    private const uint WTD_HASH_ONLY_FLAG = 0x00000200;
+    private const uint WTD_CACHE_ONLY_URL_RETRIEVAL = 0x00001000;
 
     private static readonly Guid WINTRUST_ACTION_GENERIC_VERIFY_V2 = new("00AAC56B-CD44-11D0-8CC2-00C04FC295EE");
 
@@ -37,7 +39,7 @@ internal static class AuthenticodeVerifier
                 dwUnionChoice = WTD_CHOICE_FILE,
                 pFile = fileInfoPointer,
                 dwStateAction = WTD_STATEACTION_IGNORE,
-                dwProvFlags = WTD_HASH_ONLY_FLAG
+                dwProvFlags = WTD_HASH_ONLY_FLAG | WTD_REVOCATION_CHECK_NONE | WTD_CACHE_ONLY_URL_RETRIEVAL
             };
 
             var result = WinVerifyTrust(IntPtr.Zero, ref action, ref data);

@@ -85,8 +85,14 @@ public partial class BatteryPage
                 {
                     if (!Battery.TryGetBatteryInformation(out var batteryInfo))
                     {
-                        Log.Instance.Trace($"Battery not present, stopping refresh.");
-                        break;
+                        if (!Battery.IsBatteryPresent)
+                        {
+                            Log.Instance.Trace($"Battery not present, stopping refresh.");
+                            break;
+                        }
+
+                        await Task.Delay(TimeSpan.FromSeconds(2), token);
+                        continue;
                     }
 
                     var powerAdapterStatus = await Power.IsPowerAdapterConnectedAsync();

@@ -34,12 +34,20 @@ public static class PInvokeExtensions
 
     public static unsafe bool TryDeviceIoControl<TIn, TOut>(SafeFileHandle hDevice, uint dwIoControlCode, TIn inVal, out TOut outVal) where TIn : struct where TOut : struct
     {
+        if (hDevice.IsClosed || hDevice.IsInvalid)
+        {
+            outVal = default;
+            return false;
+        }
+
         var lpInBuffer = IntPtr.Zero;
         var lpOutBuffer = IntPtr.Zero;
         var handleAdded = false;
 
         try
         {
+            hDevice.DangerousAddRef(ref handleAdded);
+
             var nInBufferSize = Marshal.SizeOf<TIn>();
             var nOutBufferSize = Marshal.SizeOf<TOut>();
 
@@ -48,7 +56,6 @@ public static class PInvokeExtensions
 
             Marshal.StructureToPtr(inVal, lpInBuffer, false);
 
-            hDevice.DangerousAddRef(ref handleAdded);
             uint bytesReturned = 0;
             var ret = PInvoke.DeviceIoControl(new HANDLE(hDevice.DangerousGetHandle()),
                 dwIoControlCode,
@@ -62,6 +69,11 @@ public static class PInvokeExtensions
             outVal = ret && bytesReturned >= nOutBufferSize ? Marshal.PtrToStructure<TOut>(lpOutBuffer) : default;
 
             return ret;
+        }
+        catch (ObjectDisposedException)
+        {
+            outVal = default;
+            return false;
         }
         finally
         {

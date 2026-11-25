@@ -55,6 +55,7 @@ Write-Host ""
 
 # Data collection
 $samples = @()
+$exitedEarly = $false
 $startTime = [System.Diagnostics.Stopwatch]::StartNew()
 
 Write-Host "[2/4] Monitoring runtime metrics in real-time..." -ForegroundColor Yellow
@@ -63,16 +64,17 @@ Write-Host ("-" * 78) -ForegroundColor Gray
 
 try {
     while ($startTime.Elapsed.TotalSeconds -lt $DurationSeconds) {
-        $proc.Refresh()
-        if ($proc.HasExited) {
+        $liveProc = Get-Process -Id $proc.Id -ErrorAction SilentlyContinue
+        if ($null -eq $liveProc) {
+            $exitedEarly = $true
             Write-Host "`n[WARN] Process terminated early at $($startTime.Elapsed.ToString('mm\:ss'))" -ForegroundColor Red
             break
         }
 
-        $wsMB = [Math]::Round($proc.WorkingSet64 / 1MB, 2)
-        $privMB = [Math]::Round($proc.PrivateMemorySize64 / 1MB, 2)
-        $handles = $proc.HandleCount
-        $threads = $proc.Threads.Count
+        $wsMB = [Math]::Round($liveProc.WorkingSet64 / 1MB, 2)
+        $privMB = [Math]::Round($liveProc.PrivateMemorySize64 / 1MB, 2)
+        $handles = $liveProc.HandleCount
+        $threads = $liveProc.Threads.Count
         $elapsed = $startTime.Elapsed.ToString("mm\:ss")
 
         $sample = [PSCustomObject]@{
@@ -92,7 +94,7 @@ try {
 finally {
     if ($launchedByScript) {
         Write-Host "`n[3/4] Terminating test-spawned process..." -ForegroundColor Yellow
-        if (-not $proc.HasExited) {
+        if ($null -ne (Get-Process -Id $proc.Id -ErrorAction SilentlyContinue)) {
             Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue
             Write-Host "[OK] Test process PID $($proc.Id) terminated cleanly." -ForegroundColor Green
         }
@@ -120,9 +122,9 @@ $handleDelta = $lastSample.Handles - $firstSample.Handles
 $wsDelta     = $lastSample.WorkingSetMB - $firstSample.WorkingSetMB
 
 # Pass/Fail Criteria
-$isHandleStable = [Math]::Abs($handleDelta) -le 100
+$isHandleStable = $handleDelta -le 100
 $isMemoryStable = $wsDelta -le 80.0
-$didNotCrash    = ($samples.Count -ge [Math]::Floor($DurationSeconds / ($IntervalSeconds * 1.5)))
+$didNotCrash    = (-not $exitedEarly) -and ($samples.Count -ge [Math]::Floor($DurationSeconds / ($IntervalSeconds * 1.5)))
 
 Write-Host "`n=================================================================" -ForegroundColor Cyan
 Write-Host "                       DIAGNOSTIC REPORT                         " -ForegroundColor Cyan

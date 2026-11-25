@@ -30,14 +30,12 @@ public partial class StatusWindow
     private readonly ApplicationSettings _settings = IoCContainer.Resolve<ApplicationSettings>();
     private readonly DashboardSettings _dashboardSettings = IoCContainer.Resolve<DashboardSettings>();
     private readonly SensorsControlSettings _sensorsControlSettings = IoCContainer.Resolve<SensorsControlSettings>();
-    private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
     private CancellationTokenSource _cancellationTokenSource = new();
+    private int _refreshRunning;
 
     private DateTime _lastUpdate = DateTime.MinValue;
     private const int UI_UPDATE_THROTTLE_MS = 100;
-    private const int MAX_RETRY_COUNT = 3;
-    private const int RETRY_DELAY_MS = 1000;
 
     private readonly PowerModeFeature _powerModeFeature = IoCContainer.Resolve<PowerModeFeature>();
     private readonly ITSModeFeature _itsModeFeature = IoCContainer.Resolve<ITSModeFeature>();
@@ -115,7 +113,7 @@ public partial class StatusWindow
         var token = _cancellationTokenSource.Token;
         try
         {
-            var initialData = await GetStatusWindowDataAsync(token, skipRetry: true);
+            var initialData = await GetStatusWindowDataAsync(token);
             ApplyDataToUI(initialData);
         }
         catch { }
@@ -127,6 +125,7 @@ public partial class StatusWindow
         Loaded += StatusWindow_Loaded;
         SizeChanged += StatusWindow_SizeChanged;
         IsVisibleChanged += StatusWindow_IsVisibleChanged;
+        Closed += StatusWindow_Closed;
         WindowStyle = WindowStyle.None;
         WindowStartupLocation = WindowStartupLocation.Manual;
         ResizeMode = ResizeMode.NoResize;
@@ -187,11 +186,31 @@ public partial class StatusWindow
 
     private async void StatusWindow_Loaded(object sender, RoutedEventArgs e)
     {
-        ComputeAnchorAndPosition();
-        if (!_machineInfo.HasValue)
+        try
         {
-            SetMachineInformation(await Compatibility.GetMachineInformationAsync().ConfigureAwait(false));
+            ComputeAnchorAndPosition();
+            if (!_machineInfo.HasValue)
+            {
+                SetMachineInformation(await Compatibility.GetMachineInformationAsync().ConfigureAwait(false));
+            }
         }
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"StatusWindow load failed.", ex);
+        }
+    }
+
+    private void StatusWindow_Closed(object? sender, EventArgs e)
+    {
+        _sensorSubscription?.Dispose();
+        _sensorSubscription = null;
+        _sensorsGroupController.SensorsUpdated -= OnSensorsUpdated;
+        try
+        {
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+        }
+        catch (ObjectDisposedException) { }
     }
 
     private void StatusWindow_SizeChanged(object sender, SizeChangedEventArgs e)
@@ -240,9 +259,12 @@ public partial class StatusWindow
 
     private async void OnSensorsUpdated(HardwareSensorSnapshot snapshot)
     {
-        var token = _cancellationTokenSource.Token;
+        if (Interlocked.Exchange(ref _refreshRunning, 1) != 0)
+            return;
+
         try
         {
+            var token = _cancellationTokenSource.Token;
             var data = await GetStatusWindowDataAsync(token, snapshot: snapshot);
             if (token.IsCancellationRequested) return;
 
@@ -252,13 +274,19 @@ public partial class StatusWindow
                 await Dispatcher.InvokeAsync(() => ApplyDataToUI(data), DispatcherPriority.Normal, token);
             }
         }
+        catch (OperationCanceledException) { }
+        catch (ObjectDisposedException) { }
         catch (Exception ex)
         {
             Log.Instance.Trace($"StatusWindow update failed: {ex}");
         }
+        finally
+        {
+            Interlocked.Exchange(ref _refreshRunning, 0);
+        }
     }
 
-    private async Task<StatusWindowData> GetStatusWindowDataAsync(CancellationToken token, bool skipRetry = false, HardwareSensorSnapshot? snapshot = null)
+    private async Task<StatusWindowData> GetStatusWindowDataAsync(CancellationToken token, HardwareSensorSnapshot? snapshot = null)
     {
         if (!_machineInfo.HasValue)
         {

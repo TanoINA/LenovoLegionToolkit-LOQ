@@ -4,15 +4,15 @@
 ; -------------------------------------------------------------------------
 
 !ifndef VERSION
-  !define VERSION "2.36.0.0"
+  !define VERSION "2.38.0.0-loq"
 !endif
 
 !ifndef NUMERIC_VERSION
-  !define NUMERIC_VERSION "2.36.0.0"
+  !define NUMERIC_VERSION "2.38.0.0"
 !endif
 
 !ifndef BUILD_DATE
-  !define BUILD_DATE "20260908"
+  !define BUILD_DATE "20261125"
 !endif
 
 !define PRODUCT_NAME "Lenovo Legion Toolkit"
@@ -158,10 +158,11 @@ Section "Windows Dynamic Lighting (LampArray)" SecIdentity
   nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Get-AppxPackage -Name ''eef45acd-2cf3-4d7d-9d33-92f37c74cc31'' | Remove-AppxPackage -ErrorAction SilentlyContinue"'
   
   ; Import certificate if present
-  nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path ''$INSTDIR\LenovoLegionToolkit.cer'') { Import-Certificate -FilePath ''$INSTDIR\LenovoLegionToolkit.cer'' -CertStoreLocation ''Cert:\LocalMachine\TrustedPeople'' -ErrorAction SilentlyContinue; Import-Certificate -FilePath ''$INSTDIR\LenovoLegionToolkit.cer'' -CertStoreLocation ''Cert:\LocalMachine\Root'' -ErrorAction SilentlyContinue }"'
+  System::Call 'Kernel32::SetEnvironmentVariable(t "LLT_INSTDIR", t "$INSTDIR")'
+  nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$d = $$env:LLT_INSTDIR; $$cer = Join-Path $$d ''LenovoLegionToolkit.cer''; if (Test-Path -LiteralPath $$cer) { Import-Certificate -FilePath $$cer -CertStoreLocation ''Cert:\LocalMachine\TrustedPeople'' -ErrorAction SilentlyContinue; Import-Certificate -FilePath $$cer -CertStoreLocation ''Cert:\LocalMachine\Root'' -ErrorAction SilentlyContinue }"'
   
   ; Register Sparse Package identity (MSIX or Manifest)
-  nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "if (Test-Path ''$INSTDIR\LenovoLegionToolkit.LampArray.msix'') { Add-AppxPackage -Path ''$INSTDIR\LenovoLegionToolkit.LampArray.msix'' -ExternalLocation ''$INSTDIR'' -ErrorAction SilentlyContinue } elseif (Test-Path ''$INSTDIR\AppxManifest.xml'') { Add-AppxPackage -Register ''$INSTDIR\AppxManifest.xml'' -ExternalLocation ''$INSTDIR'' -ErrorAction SilentlyContinue }"'
+  nsExec::Exec 'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$$d = $$env:LLT_INSTDIR; $$msix = Join-Path $$d ''LenovoLegionToolkit.LampArray.msix''; $$xml = Join-Path $$d ''AppxManifest.xml''; if (Test-Path -LiteralPath $$msix) { Add-AppxPackage -Path $$msix -ExternalLocation $$d -ErrorAction SilentlyContinue } elseif (Test-Path -LiteralPath $$xml) { Add-AppxPackage -Register $$xml -ExternalLocation $$d -ErrorAction SilentlyContinue }"'
 SectionEnd
 
 ; Uninstaller Section
@@ -192,8 +193,6 @@ Section "Uninstall"
   DeleteRegKey HKLM "${PRODUCT_UNINST_KEY}"
   DeleteRegKey HKLM "${PRODUCT_DIR_REGKEY}"
   DeleteRegKey HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\{0C37B9AC-9C3D-4302-8ABB-125C7C7D83D5}_is1"
-  Delete "$INSTDIR\unins000.exe"
-  Delete "$INSTDIR\unins000.dat"
 
   ; Ask user if they wish to keep or delete settings
   MessageBox MB_YESNO|MB_ICONQUESTION "Do you want to delete all Lenovo Legion Toolkit settings, customizations, and configurations?" IDNO skip_settings
@@ -233,7 +232,7 @@ not_running:
 check_dotnet_cmd:
   FindClose $3
   ; Method 2: Check via findstr exit code (avoids 1024-char buffer truncation)
-  nsExec::Exec 'cmd.exe /C "dotnet --list-runtimes | findstr /C:\"Microsoft.WindowsDesktop.App 9.\""'
+  nsExec::Exec 'cmd.exe /C dotnet --list-runtimes | findstr /C:"Microsoft.WindowsDesktop.App 9."'
   Pop $0
   IntCmp $0 0 dotnet_ok
 

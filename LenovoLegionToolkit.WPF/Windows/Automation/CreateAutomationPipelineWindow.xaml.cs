@@ -58,7 +58,7 @@ public partial class CreateAutomationPipelineWindow
         _countsTextBlock.Text = string.Format(Resource.Automation_SupportedAvailableCount, _triggers.Count, totalAvailableTriggers);
 
         IsVisibleChanged += CreateAutomationPipelineWindow_IsVisibleChanged;
-        _logicComboBox.SelectionChanged += (_, _) => _ = RefreshAsync();
+        _logicComboBox.SelectionChanged += (_, _) => Refresh();
     }
 
     private static List<IAutomationPipelineTrigger> CreateTriggers() =>
@@ -113,10 +113,10 @@ public partial class CreateAutomationPipelineWindow
         _ => true,
     };
 
-    private async void CreateAutomationPipelineWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    private void CreateAutomationPipelineWindow_IsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
     {
         if (IsVisible)
-            await RefreshAsync();
+            Refresh();
     }
 
     private void CreateButton_Click(object sender, RoutedEventArgs e)
@@ -128,12 +128,18 @@ public partial class CreateAutomationPipelineWindow
 
         if (triggers.Length == 1)
         {
+            if (IsDisallowedStandaloneDuplicate(triggers[0]))
+                return;
+
             _createPipeline(triggers[0]);
         }
         else if (_logicComboBox.SelectedIndex == 0)
         {
             foreach (var t in triggers)
-                _createPipeline(t);
+            {
+                if (!IsDisallowedStandaloneDuplicate(t))
+                    _createPipeline(t);
+            }
         }
         else
         {
@@ -148,43 +154,54 @@ public partial class CreateAutomationPipelineWindow
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Close();
 
-    private async void BackButton_Click(object sender, RoutedEventArgs e)
+    private void BackButton_Click(object sender, RoutedEventArgs e)
     {
         _multiSelect = false;
         _selectedTriggers.Clear();
-        await RefreshAsync();
+        Refresh();
     }
 
     private void _searchBox_TextChanged(object sender, TextChangedEventArgs e)
     {
-        _ = RefreshAsync();
+        Refresh();
     }
 
-    private Task RefreshAsync()
+    private bool IsDisallowedStandaloneDuplicate(IAutomationPipelineTrigger trigger) =>
+        trigger is IDisallowDuplicatesAutomationPipelineTrigger && _existingTriggerTypes.Contains(trigger.GetType());
+
+    private void Refresh()
     {
-        _content.Children.Clear();
-
-        if (!_multiSelect)
-            _content.Children.Add(CreateMultipleSelectCardControl());
-
-        var filter = _searchBox.Text?.Trim() ?? string.Empty;
-
-        foreach (var trigger in _triggers)
+        try
         {
-            if (string.IsNullOrWhiteSpace(filter) ||
-                trigger.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            if (_multiSelect && _logicComboBox.SelectedIndex == 0)
+                _selectedTriggers.RemoveWhere(IsDisallowedStandaloneDuplicate);
+
+            _content.Children.Clear();
+
+            if (!_multiSelect)
+                _content.Children.Add(CreateMultipleSelectCardControl());
+
+            var filter = _searchBox.Text?.Trim() ?? string.Empty;
+
+            foreach (var trigger in _triggers)
             {
-                _content.Children.Add(CreateCardControl(trigger));
+                if (string.IsNullOrWhiteSpace(filter) ||
+                    trigger.DisplayName.Contains(filter, StringComparison.OrdinalIgnoreCase))
+                {
+                    _content.Children.Add(CreateCardControl(trigger));
+                }
             }
+
+            _backButton.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
+            _createButton.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
+            _logicComboBox.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
+            _countsTextBlock.Visibility = _multiSelect ? Visibility.Collapsed : Visibility.Visible;
+            RefreshCreateButton();
         }
-
-        _backButton.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
-        _createButton.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
-        _logicComboBox.Visibility = _multiSelect ? Visibility.Visible : Visibility.Collapsed;
-        _countsTextBlock.Visibility = _multiSelect ? Visibility.Collapsed : Visibility.Visible;
-        RefreshCreateButton();
-
-        return Task.CompletedTask;
+        catch (Exception ex)
+        {
+            Log.Instance.Trace($"Failed to refresh automation trigger list.", ex);
+        }
     }
 
     private CardControl CreateMultipleSelectCardControl()
@@ -200,10 +217,10 @@ public partial class CreateAutomationPipelineWindow
             Margin = new(0, 8, 0, 0),
         };
 
-        control.Click += async (_, _) =>
+        control.Click += (_, _) =>
         {
             _multiSelect = true;
-            await RefreshAsync();
+            Refresh();
         };
 
         return control;
@@ -281,12 +298,18 @@ public partial class CreateAutomationPipelineWindow
 
     private void RefreshCreateButton()
     {
-        if (!_multiSelect)
+        if (!_multiSelect || _selectedTriggers.Count == 0)
         {
             _createButton.IsEnabled = false;
             return;
         }
 
-        _createButton.IsEnabled = _selectedTriggers.Count > 0;
+        if (_selectedTriggers.Count == 1 && IsDisallowedStandaloneDuplicate(_selectedTriggers.First()))
+        {
+            _createButton.IsEnabled = false;
+            return;
+        }
+
+        _createButton.IsEnabled = true;
     }
 }

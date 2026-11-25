@@ -1,31 +1,22 @@
-## What's New
+Lenovo Legion Toolkit (LOQ Edition) synced with upstream v2.38.0.0 (`ab16eb1b`), plus fixes from a post-merge audit.
 
-Follow-up release fixing a few concurrency and stability issues that slipped through in v2.35.4.5.
+### From upstream v2.38.0.0
+- Multi-fan motherboard sensors across the dashboard, OSD, and tray status popup.
+- Safe handling when a laptop runs with no battery detected.
+- Better Spectrum HID detection, 24-zone support, and extra bindable Fn keys.
+- Updated Crowdin translations and AMD CPU/iGPU naming fixes.
 
-### Fixes
-- **Fn+Q deadlock** - `SetStateAsync` could hold the ITS mode lock permanently if it threw before releasing it. The lock now releases in a `finally` block on every path.
-- **Atomic ITS overlay sync** - converted `_pendingOverlaySync` to atomic `Interlocked.Exchange`, eliminating double-firing between WMI events and timer timeouts.
-- **Hardware sensor resilience** - GPU refresh loop catches and logs transient WMI errors instead of terminating monitoring.
-- **PowerListener thread safety** - guarded overlay and power plan snapshot reads/writes with `_stateLock` to prevent torn Guid reads between UI and poll threads.
-- **dGPU Awake silent init failure** - the constructor's fire-and-forget `UpdateStateAsync()` is wrapped in `try/catch` so D3D11/IDXGIFactory6 init failures are logged instead of swallowed.
-- **dGPU Awake flapping on AC spikes** - transient `ACLineStatus=255` readings are debounced (500ms) to stop rapid on/off oscillation.
-- **Automation event flood & dropped events** - rapid Fn+Q / AC plug-unplug bursts are coalesced via an `Interlocked` reentrancy guard; an event arriving mid-cycle is now processed in a trailing pass instead of being dropped, so state-based triggers (e.g. `PowerMode=Performance` landing mid-cycle) are acted upon.
-- **OSD multi-screen reuse race** - `Close(bool)` is now idempotent and the `SourceInitialized` position update is guarded by `IsOpen`, fixing a crash when a screen is pruned while the auto-close timer fires.
-- **dGPU Awake crash on dispose** - the `async void` power-state handler is wrapped in `try/catch` so an `ObjectDisposedException`/COM error during teardown can't crash the process; added a post-lock `_isDisposed` re-check against concurrent `DisposeAsync`.
-- **Clean exit & singleton disposal** - added `IoCContainer.Dispose()` on `Application_Exit` to ensure hardware sensor drivers and controllers release resources cleanly.
-- **Service hang prevention & SCM leaks** - added 30s timeouts to `WaitForStatus` and wrapped `ServiceController.GetServices()` in explicit disposal.
-- **Sensor recovery resilience** - hardware initialization flag only set upon success, allowing automatic recovery if initial discovery fails.
-- **WPF async void exception guards** - wrapped UI event handlers in try/catch to prevent unhandled exceptions from crashing the application.
-- **WMI COM resource cleanup** - explicit disposal for WMI searchers, parameter objects, and result collections.
-- **Packaging & Build System** - hardened `make_nsis.bat` and `make_installer.nsi` to cleanly separate `NUMERIC_VERSION` from `-loq` SemVer tag and clean build staging directory.
+### LOQ and stability fixes
+- **Modern Standby & dGPU wake**: `Compatibility.GetAlwaysOnAcStatus()` had an inverted `NTSTATUS` check that kept S0ix resume callbacks disabled. `DgpuAwakeManager.PulseDgpuAsync` now targets the NVIDIA adapter (`0x10DE`) rather than the iGPU and uses trailing-edge AC debouncing so rapid plug/unplug changes are not dropped.
+- **Custom mode & GPU P-States**: `GodModeController` no longer runs an NVAPI PCF reset on every mode switch while the dGPU is asleep, and `GodModeSettingsWindow` checks PCF support off the UI thread. `DiscreteGPUManagementWindow` keeps your saved P-State lock when the dGPU wakes while the window is open, and `GPUController` stays running even if a UI tooltip hits an exited process.
+- **OSD & Sensors**: Closing a visible OSD no longer leaks its sensor subscription or clears a newly created `App.Current.OsdWindow` during style switches. `SensorsGroupController` recovers properly after a failed `ResetSensors()`, and localized builds no longer print `-1` with translated watt units when the dGPU is inactive.
+- **Battery**: `BatteryPage` keeps refreshing past transient battery tag resets, `GetOnBatterySince()` works past 24.85 days of uptime without falling back to year `0001`, and concurrent battery readers no longer race on shared handle disposal.
+- **Automation & Settings**: `AutomationProcessor` coalesces burst events per type instead of overwriting unrelated pending events, and `AbstractSettings` enforces an allowlist `ISerializationBinder` against untrusted JSON `$type` payloads.
+- **Updates & Packaging**: `AuthenticodeVerifier` uses the correct `WTD_HASH_ONLY_FLAG` (`0x00000200`), `UpdateWindow` restricts markdown links to HTTP/HTTPS, and assembly/installer versions are bumped to `2.38.0.0` so the updater will not offer upstream v2.38.0.0 as an upgrade.
+- **Installer & Scripts**: Fixed `.NET 9` `findstr` quoting in `make_installer.nsi`, automatic `build_installer/` creation in `make_nsis.bat`, and crash detection in `smoke_test.ps1`.
 
-### Tests
-- Added `SetStateLockReleaseTests` (4 tests) and `ProcessEventCoalescingTests` (3 tests). 24/24 unit tests passing (100% PASS), builds clean (0 warnings).
+### Requirements
+- Lenovo LOQ or Legion laptop (tested mainly on LOQ 15IRX10, Model 83JE, i5-13450HX, RTX 5050 Laptop GPU, 144Hz).
+- Microsoft .NET Desktop Runtime 9.0 (x64).
 
----
-
-### Notes
-* Tested on Lenovo LOQ 15IRX10 (Model 83JE, BIOS R3CN44WW, i5-13450HX, RTX 5050 Laptop GPU, 144Hz).
-* If the orange **Log** badge is visible in the top-right corner, application logging is enabled. For normal daily use, you can turn off **Logging** in *Settings -> App* to reduce disk writes.
-
-**Installer**: `build_installer/LenovoLegionToolkitSetup-v2.35.4.6-loq_Build20260908_NSIS.exe`
+Note: If you see an orange Log badge in the top-right corner, debug logging is enabled. Turn it off in Settings -> App for daily use to avoid extra disk writes.

@@ -269,6 +269,10 @@ internal static class NVAPI
             {
                 GPUApi.SetRatedTdpControl(gpu.Handle, PrivateRatedTdpControlV1.ClearRatedTdp());
             }
+            catch (NVIDIAApiException ex) when (ex.Status == Status.NotSupported)
+            {
+                Log.Instance.Trace($"Rated TDP control is not supported on this GPU.");
+            }
             catch (Exception ex)
             {
                 Log.Instance.Trace($"Failed to set rated TDP control.", ex);

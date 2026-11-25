@@ -76,7 +76,6 @@ public class SensorsGroupController : IDisposable
     private (IHardware? Hardware, string? Name) _cachedGpuName;
 
     private readonly Lock _hardwareLock = new();
-    private readonly Lock _configLock = new();
     public HardwareSensorSnapshot Snapshot { get; private set; } = new();
     private volatile bool _hardwareInitialized;
 
@@ -323,7 +322,7 @@ public class SensorsGroupController : IDisposable
 
     public Task<string> GetCpuNameAsync()
     {
-        lock (_configLock)
+        lock (_hardwareLock)
         {
             if (_isResetting || !IsLibreHardwareMonitorInitialized() || !_cpuProvider.IsAvailable)
                 return Task.FromResult(UNKNOWN_NAME);
@@ -571,6 +570,8 @@ public class SensorsGroupController : IDisposable
                     Log.Instance.Trace($"ResetHardware failed during Open/Reset: {ex}");
                     _computer = null;
                     _hardwareInitialized = false;
+                    _initialized = false;
+                    InitialState = LibreHardwareMonitorInitialState.Fail;
                     return;
                 }
 
@@ -636,11 +637,8 @@ public class SensorsGroupController : IDisposable
     {
         lock (_subscribers)
         {
-            if (_subscribers.Remove(subscriber))
-            {
-                // Restart outside the subscriber lock so the old producer can
-                // finish its final subscriber-state check without deadlocking.
-            }
+            if (!_subscribers.Remove(subscriber))
+                return;
         }
         UpdateProducerLoop();
     }
@@ -760,7 +758,7 @@ public class SensorsGroupController : IDisposable
         lock (_producerSync)
             StopProducerLoop();
         _cpuProvider.SensorResetNeeded -= OnSensorResetNeeded;
-        lock (_hardwareLock) { _computer?.Close(); _computer = null; _hardwareInitialized = false; }
+        lock (_hardwareLock) { _computer?.Close(); _computer = null; _hardwareInitialized = false; _initialized = false; InitialState = LibreHardwareMonitorInitialState.Fail; }
         _initSemaphore.Dispose();
         GC.SuppressFinalize(this);
     }
